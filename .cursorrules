@@ -1,0 +1,33 @@
+Always refer to @SPEC.md as the single source of truth for this project.
+
+## Development Protocol
+
+- Follow Phase-based development. Do not start Phase N+1 until Phase N acceptance criteria are verified.
+- Use "think" blocks before writing complex financial logic or prompt engineering.
+- When making decisions not covered by SPEC.md, ask the user before proceeding.
+
+## Code Standards
+
+- Strict TypeScript (`strict: true` in tsconfig). No `any` types except where interfacing with untyped third-party APIs (and annotate those with `// eslint-disable-next-line @typescript-eslint/no-explicit-any`).
+- All financial arithmetic MUST use `decimal.js`. Never use native `number` for money values.
+- All Supabase tables MUST have Row Level Security policies scoped to `auth.uid()`.
+- Every page component must be wrapped in an Error Boundary.
+- PII must be stripped from any data sent to external APIs (Anthropic, Unstract).
+
+## Data Schema
+
+- All data sources (Flanks, Sharesight, PDF extraction) MUST map to the `UnifiedPortfolio` interface defined in `src/lib/types.ts`.
+- Do not add fields to the schema without updating SPEC.md first.
+
+## File Organization
+
+- API routes go in `src/app/api/`.
+- Shared types go in `src/lib/types.ts`.
+- Supabase client utilities go in `src/lib/supabase/`.
+- UI primitives from shadcn/ui go in `src/components/ui/`.
+- Feature components go in `src/components/`.
+
+## Testing
+
+- Write unit tests for `decimal.js` helpers and PII masking logic.
+- Use mock data from `src/data/mock_bank_data.json` for development and tests.

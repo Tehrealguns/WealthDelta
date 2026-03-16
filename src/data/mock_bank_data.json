@@ -1,0 +1,152 @@
+[
+  {
+    "asset_id": "ubs-eq-001",
+    "source": "UBS",
+    "asset_name": "Apple Inc.",
+    "asset_class": "Equity",
+    "ticker_symbol": "AAPL",
+    "valuation_base": 485200.0000,
+    "valuation_date": "2026-03-14",
+    "is_static": false
+  },
+  {
+    "asset_id": "ubs-eq-002",
+    "source": "UBS",
+    "asset_name": "Microsoft Corporation",
+    "asset_class": "Equity",
+    "ticker_symbol": "MSFT",
+    "valuation_base": 372600.0000,
+    "valuation_date": "2026-03-14",
+    "is_static": false
+  },
+  {
+    "asset_id": "ubs-bond-001",
+    "source": "UBS",
+    "asset_name": "US Treasury 10Y Note 4.25%",
+    "asset_class": "Bond",
+    "ticker_symbol": null,
+    "valuation_base": 1250000.0000,
+    "valuation_date": "2026-03-14",
+    "is_static": false
+  },
+  {
+    "asset_id": "ubs-cash-001",
+    "source": "UBS",
+    "asset_name": "USD Cash Account",
+    "asset_class": "Cash",
+    "ticker_symbol": null,
+    "valuation_base": 890430.5000,
+    "valuation_date": "2026-03-14",
+    "is_static": false
+  },
+  {
+    "asset_id": "shf-pe-001",
+    "source": "Stonehage",
+    "asset_name": "Stonehage Fleming PE Fund III",
+    "asset_class": "Private Equity",
+    "ticker_symbol": null,
+    "valuation_base": 2150000.0000,
+    "valuation_date": "2026-02-28",
+    "is_static": true
+  },
+  {
+    "asset_id": "shf-alt-001",
+    "source": "Stonehage",
+    "asset_name": "SF Global Real Assets Fund",
+    "asset_class": "Alternative",
+    "ticker_symbol": null,
+    "valuation_base": 1780000.0000,
+    "valuation_date": "2026-02-28",
+    "is_static": true
+  },
+  {
+    "asset_id": "shf-bond-001",
+    "source": "Stonehage",
+    "asset_name": "SF Sterling Corporate Bond Portfolio",
+    "asset_class": "Bond",
+    "ticker_symbol": null,
+    "valuation_base": 925000.0000,
+    "valuation_date": "2026-02-28",
+    "is_static": true
+  },
+  {
+    "asset_id": "jbw-eq-001",
+    "source": "JBWere",
+    "asset_name": "BHP Group Ltd",
+    "asset_class": "Equity",
+    "ticker_symbol": "BHP.AX",
+    "valuation_base": 310500.0000,
+    "valuation_date": "2026-03-14",
+    "is_static": false
+  },
+  {
+    "asset_id": "jbw-eq-002",
+    "source": "JBWere",
+    "asset_name": "Commonwealth Bank of Australia",
+    "asset_class": "Equity",
+    "ticker_symbol": "CBA.AX",
+    "valuation_base": 445800.0000,
+    "valuation_date": "2026-03-14",
+    "is_static": false
+  },
+  {
+    "asset_id": "jbw-cash-001",
+    "source": "JBWere",
+    "asset_name": "AUD Cash Management Account",
+    "asset_class": "Cash",
+    "ticker_symbol": null,
+    "valuation_base": 532000.0000,
+    "valuation_date": "2026-03-14",
+    "is_static": false
+  },
+  {
+    "asset_id": "jbw-alt-001",
+    "source": "JBWere",
+    "asset_name": "Macquarie Infrastructure Fund",
+    "asset_class": "Alternative",
+    "ticker_symbol": null,
+    "valuation_base": 680000.0000,
+    "valuation_date": "2026-03-14",
+    "is_static": false
+  },
+  {
+    "asset_id": "bp-eq-001",
+    "source": "BellPotter",
+    "asset_name": "CSL Limited",
+    "asset_class": "Equity",
+    "ticker_symbol": "CSL.AX",
+    "valuation_base": 287400.0000,
+    "valuation_date": "2026-03-14",
+    "is_static": false
+  },
+  {
+    "asset_id": "bp-eq-002",
+    "source": "BellPotter",
+    "asset_name": "Fortescue Metals Group",
+    "asset_class": "Equity",
+    "ticker_symbol": "FMG.AX",
+    "valuation_base": 198750.0000,
+    "valuation_date": "2026-03-14",
+    "is_static": false
+  },
+  {
+    "asset_id": "bp-bond-001",
+    "source": "BellPotter",
+    "asset_name": "Australian Govt Bond 3.75% 2031",
+    "asset_class": "Bond",
+    "ticker_symbol": null,
+    "valuation_base": 500000.0000,
+    "valuation_date": "2026-03-14",
+    "is_static": false
+  },
+  {
+    "asset_id": "ubs-pe-001",
+    "source": "UBS",
+    "asset_name": "UBS Private Equity Partners 2024",
+    "asset_class": "Private Equity",
+    "ticker_symbol": null,
+    "valuation_base": 1500000.0000,
+    "valuation_date": "2026-03-01",
+    "is_static": false
+  }
+]
