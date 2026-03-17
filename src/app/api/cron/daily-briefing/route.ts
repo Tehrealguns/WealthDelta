@@ -34,6 +34,14 @@ Structure with these sections:
 
 Write approximately 2000-3000 words. Use professional financial language.`;
 
+const AEST_OFFSET = 10;
+
+function getCurrentAESTHour(): string {
+  const now = new Date();
+  const aestHour = (now.getUTCHours() + AEST_OFFSET) % 24;
+  return `${String(aestHour).padStart(2, '0')}:00`;
+}
+
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
@@ -44,14 +52,18 @@ export async function POST(request: NextRequest) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   const supabase = createServiceClient(supabaseUrl, serviceKey);
 
+  const currentAEST = getCurrentAESTHour();
+
   const { data: settings, error: settingsErr } = await supabase
     .from('user_settings')
     .select('*')
-    .eq('email_enabled', true);
+    .eq('email_enabled', true)
+    .eq('email_time', currentAEST);
 
   if (settingsErr || !settings?.length) {
     return NextResponse.json({
-      message: 'No users with email enabled',
+      message: `No users scheduled for ${currentAEST} AEST`,
+      currentAEST,
       processed: 0,
     });
   }
@@ -268,7 +280,8 @@ ${marketContext}
   }
 
   return NextResponse.json({
-    message: `Processed ${results.length} users`,
+    message: `Processed ${results.length} users for ${currentAEST} AEST`,
+    currentAEST,
     date: today,
     results,
   });
