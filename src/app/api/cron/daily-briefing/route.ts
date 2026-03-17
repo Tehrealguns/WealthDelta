@@ -5,7 +5,8 @@ import { maskPII } from '@/lib/pii-masker';
 import { toDecimal, formatCurrency, Decimal } from '@/lib/decimal';
 import { enrichHoldings, buildMarketContext } from '@/lib/market-data';
 import { renderResearchPDF } from '@/lib/pdf/render';
-import { Resend } from 'resend';
+import { sendMail } from '@/lib/mailer';
+import { render } from '@react-email/components';
 import BriefingEmail from '@/emails/briefing-email';
 import type { HoldingRow, SnapshotBreakdown, Source, AssetClass } from '@/lib/types';
 
@@ -68,16 +69,13 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const resendKey = process.env.RESEND_API_KEY;
-  if (!resendKey || resendKey === 're_xxxxx') {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     return NextResponse.json(
-      { error: 'RESEND_API_KEY not configured' },
+      { error: 'SMTP not configured. Set SMTP_USER and SMTP_PASS.' },
       { status: 500 },
     );
   }
 
-  const resend = new Resend(resendKey);
-  const fromEmail = process.env.BRIEFING_FROM_EMAIL ?? 'briefing@wealthdelta.app';
   const today = new Date().toISOString().split('T')[0];
   const results: Array<{ userId: string; status: string; error?: string }> = [];
 
@@ -251,24 +249,19 @@ ${marketContext}
         pdfBuffer = await renderResearchPDF(reportText, today);
       }
 
-      // --- Send email ---
-      const emailPayload: Parameters<typeof resend.emails.send>[0] = {
-        from: fromEmail,
+      // --- Send email via SMTP ---
+      const html = await render(
+        BriefingEmail({ briefingDate: today, content: summaryText }),
+      );
+
+      await sendMail({
         to: userEmail,
         subject: `WealthDelta Daily Briefing — ${today}`,
-        react: BriefingEmail({ briefingDate: today, content: summaryText }),
-      };
-
-      if (pdfBuffer) {
-        emailPayload.attachments = [
-          {
-            filename: `WealthDelta-Research-${today}.pdf`,
-            content: pdfBuffer,
-          },
-        ];
-      }
-
-      await resend.emails.send(emailPayload);
+        html,
+        attachments: pdfBuffer
+          ? [{ filename: `WealthDelta-Research-${today}.pdf`, content: pdfBuffer }]
+          : undefined,
+      });
       results.push({ userId, status: 'sent' });
     } catch (err) {
       results.push({

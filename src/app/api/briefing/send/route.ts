@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { Resend } from 'resend';
+import { render } from '@react-email/components';
+import { sendMail } from '@/lib/mailer';
 import BriefingEmail from '@/emails/briefing-email';
 
 export async function POST(request: NextRequest) {
@@ -11,22 +12,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey || apiKey === 're_xxxxx') {
-    return NextResponse.json(
-      { error: 'Email not configured', details: 'Set RESEND_API_KEY in .env.local' },
-      { status: 500 },
-    );
-  }
-
   const body = (await request.json()) as {
     briefingId: string;
     content: string;
     toEmail: string;
   };
 
-  const fromEmail = process.env.BRIEFING_FROM_EMAIL ?? 'briefing@wealthdelta.app';
-  const toEmail = body.toEmail || process.env.BRIEFING_TO_EMAIL || userData.user.email;
+  const toEmail = body.toEmail || userData.user.email;
 
   if (!toEmail) {
     return NextResponse.json(
@@ -37,27 +29,22 @@ export async function POST(request: NextRequest) {
 
   const today = new Date().toISOString().split('T')[0];
 
-  const resend = new Resend(apiKey);
+  try {
+    const html = await render(
+      BriefingEmail({ briefingDate: today, content: body.content }),
+    );
 
-  const { data, error } = await resend.emails.send({
-    from: fromEmail,
-    to: toEmail,
-    subject: `WealthDelta Daily Briefing — ${today}`,
-    react: BriefingEmail({
-      briefingDate: today,
-      content: body.content,
-    }),
-  });
+    await sendMail({
+      to: toEmail,
+      subject: `WealthDelta Daily Briefing — ${today}`,
+      html,
+    });
 
-  if (error) {
+    return NextResponse.json({ message: 'Email sent' });
+  } catch (err) {
     return NextResponse.json(
-      { error: 'Failed to send email', details: error.message },
+      { error: 'Failed to send email', details: err instanceof Error ? err.message : 'Unknown error' },
       { status: 500 },
     );
   }
-
-  return NextResponse.json({
-    message: 'Email sent',
-    emailId: data?.id,
-  });
 }
