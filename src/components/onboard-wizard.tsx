@@ -27,15 +27,12 @@ const FOCUS_AREAS = [
   { id: 'rebalance', label: 'Rebalancing', icon: Target, description: 'Drift from target allocation' },
 ] as const;
 
-const TIME_OPTIONS = [
-  { value: '06:00', label: '6:00 AM' },
-  { value: '07:00', label: '7:00 AM' },
-  { value: '08:00', label: '8:00 AM' },
-  { value: '09:00', label: '9:00 AM' },
-  { value: '17:00', label: '5:00 PM' },
-  { value: '18:00', label: '6:00 PM' },
-  { value: '20:00', label: '8:00 PM' },
-];
+const TIME_OPTIONS = Array.from({ length: 24 }, (_, h) => {
+  const hour24 = String(h).padStart(2, '0');
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  const ampm = h < 12 ? 'AM' : 'PM';
+  return { value: `${hour24}:00`, label: `${hour12}:00 ${ampm}` };
+});
 
 interface OnboardWizardProps {
   userEmail: string;
@@ -215,43 +212,57 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
         </CardContent>
       </Card>
 
-      {/* Delivery Preferences */}
+      {/* Delivery Time */}
       <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
-        <CardContent className="pt-6 space-y-6">
-          <h2 className="text-sm font-medium text-white/60">
-            Delivery preferences
-          </h2>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Clock className="size-4 text-white/20" />
-              <div>
-                <p className="text-sm text-white/50">Briefing delivery time</p>
-                <p className="text-xs text-white/15 mt-0.5">
-                  Your daily briefing will arrive at this time (AEST)
-                </p>
-              </div>
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <Clock className="size-4 text-white/20" />
+            <div>
+              <h2 className="text-sm font-medium text-white/60">
+                When should your briefing arrive?
+              </h2>
+              <p className="text-xs text-white/20 mt-0.5">
+                Your daily executive summary will be emailed at this time (AEST)
+              </p>
             </div>
-            <select
-              value={emailTime}
-              onChange={(e) => setEmailTime(e.target.value)}
-              className="rounded-xl bg-white/[0.02] border border-white/[0.06] px-4 py-2 text-sm text-white/50 focus:outline-none focus:ring-1 focus:ring-white/10 appearance-none"
-            >
-              {TIME_OPTIONS.map((t) => (
-                <option key={t.value} value={t.value} className="bg-[#0a0a0a] text-white/60">
-                  {t.label}
-                </option>
-              ))}
-            </select>
           </div>
 
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+            {TIME_OPTIONS.map((t) => {
+              const selected = emailTime === t.value;
+              const hour = parseInt(t.value.split(':')[0], 10);
+              const isMorning = hour >= 5 && hour <= 9;
+              return (
+                <button
+                  key={t.value}
+                  onClick={() => setEmailTime(t.value)}
+                  className={`rounded-xl border px-2 py-2.5 text-center transition-all ${
+                    selected
+                      ? 'border-white/20 bg-white/[0.08] text-white/80'
+                      : 'border-white/[0.04] text-white/25 hover:border-white/10 hover:text-white/40 hover:bg-white/[0.02]'
+                  }`}
+                >
+                  <span className="text-sm font-medium block">{t.label}</span>
+                  {isMorning && (
+                    <span className="text-[10px] text-emerald-400/50 block mt-0.5">popular</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* PDF Toggle */}
+      <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+        <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <FileText className="size-4 text-white/20" />
               <div>
                 <p className="text-sm text-white/50">Attach research PDF</p>
                 <p className="text-xs text-white/15 mt-0.5">
-                  Deep-dive analysis as a PDF attachment
+                  Deep-dive analysis as a PDF attachment with each briefing
                 </p>
               </div>
             </div>
