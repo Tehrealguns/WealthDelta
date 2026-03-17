@@ -9,8 +9,10 @@ export interface UnifiedPortfolio {
   asset_name: string;
   asset_class: AssetClass;
   ticker_symbol: string | null;
+  quantity: number | null;
   valuation_base: number;
   valuation_date: string;
+  currency: string;
   is_static: boolean;
 }
 
@@ -22,8 +24,10 @@ export interface HoldingRow {
   asset_name: string;
   asset_class: AssetClass;
   ticker_symbol: string | null;
+  quantity: number | null;
   valuation_base: number;
   valuation_date: string;
+  currency: string;
   is_static: boolean;
   created_at: string;
   updated_at: string;

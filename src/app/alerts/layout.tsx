@@ -2,7 +2,7 @@ import { AppNav } from '@/components/app-nav';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { DottedBackground } from '@/components/dotted-background';
 
-export default function ResearchLayout({
+export default function AlertsLayout({
   children,
 }: {
   children: React.ReactNode;

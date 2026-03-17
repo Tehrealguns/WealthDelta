@@ -3,6 +3,7 @@ import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { maskPII } from '@/lib/pii-masker';
 import { toDecimal, formatCurrency, Decimal } from '@/lib/decimal';
+import { enrichHoldings, buildMarketContext } from '@/lib/market-data';
 import { renderResearchPDF } from '@/lib/pdf/render';
 import { Resend } from 'resend';
 import BriefingEmail from '@/emails/briefing-email';
@@ -99,13 +100,17 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // --- Generate snapshot ---
+      // --- Enrich with live prices and generate snapshot ---
+      const enriched = await enrichHoldings(holdings);
+
       let totalValue = toDecimal(0);
       const bySource: Record<string, Decimal> = {};
       const byClass: Record<string, Decimal> = {};
 
-      for (const h of holdings) {
-        const val = toDecimal(h.valuation_base);
+      for (let i = 0; i < holdings.length; i++) {
+        const h = holdings[i];
+        const e = enriched[i];
+        const val = toDecimal(e.live_value ?? h.valuation_base);
         totalValue = totalValue.plus(val);
         bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);
         byClass[h.asset_class] = (byClass[h.asset_class] ?? toDecimal(0)).plus(val);
@@ -152,7 +157,8 @@ export async function POST(request: NextRequest) {
         { onConflict: 'user_id,snapshot_date' },
       );
 
-      // --- Build portfolio context ---
+      // --- Build portfolio context with live market data ---
+      const marketContext = buildMarketContext(enriched);
       const portfolioContext = `
 CURRENT PORTFOLIO (${today}):
 Total Value: ${formatCurrency(totalValue.toNumber())}
@@ -165,7 +171,13 @@ BREAKDOWN BY ASSET CLASS:
 ${Object.entries(breakdown.by_class).map(([c, v]) => `  ${c}: ${formatCurrency(v)}`).join('\n')}
 
 HOLDINGS:
-${holdings.map((h) => `  ${h.asset_name} (${h.source}, ${h.asset_class}): ${formatCurrency(h.valuation_base)}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}`).join('\n')}
+${holdings.map((h) => {
+  const e = enriched.find((x) => x.asset_id === h.asset_id);
+  const qty = h.quantity != null ? ` | ${h.quantity} units` : '';
+  const live = e?.live_value != null ? ` | Live: ${formatCurrency(e.live_value)}` : '';
+  return `  ${h.asset_name} (${h.source}, ${h.asset_class}): ${formatCurrency(h.valuation_base)}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}`;
+}).join('\n')}
+${marketContext}
 `;
 
       const maskedContext = maskPII(portfolioContext);

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { maskPII } from '@/lib/pii-masker';
 import { formatCurrency } from '@/lib/decimal';
+import { enrichHoldings, buildMarketContext } from '@/lib/market-data';
 import type { HoldingRow, DailySnapshotRow } from '@/lib/types';
 
 const BRIEFING_SYSTEM = `You are a private wealth advisor writing a concise daily briefing for an ultra-high-net-worth individual. Write in a professional but conversational tone. Structure your response with:
@@ -49,6 +50,9 @@ export async function POST(request: NextRequest) {
   const currentSnapshot = snapshots[0];
   const prevSnapshot = snapshots[1] ?? null;
 
+  const enriched = await enrichHoldings(holdings);
+  const marketContext = buildMarketContext(enriched);
+
   const portfolioContext = `
 CURRENT PORTFOLIO (${currentSnapshot.snapshot_date}):
 Total Value: ${formatCurrency(currentSnapshot.total_value)}
@@ -61,7 +65,13 @@ BREAKDOWN BY ASSET CLASS:
 ${currentSnapshot.breakdown_json ? Object.entries(currentSnapshot.breakdown_json.by_class).map(([c, v]) => `  ${c}: ${formatCurrency(v as number)}`).join('\n') : 'N/A'}
 
 HOLDINGS:
-${holdings.map((h) => `  ${h.asset_name} (${h.source}, ${h.asset_class}): ${formatCurrency(h.valuation_base)}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}`).join('\n')}
+${holdings.map((h) => {
+  const e = enriched.find((x) => x.asset_id === h.asset_id);
+  const qty = h.quantity != null ? ` | ${h.quantity} units` : '';
+  const live = e?.live_value != null ? ` | Live: ${formatCurrency(e.live_value)}` : '';
+  return `  ${h.asset_name} (${h.source}, ${h.asset_class}): ${formatCurrency(h.valuation_base)}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}`;
+}).join('\n')}
+${marketContext}
 ${prevSnapshot ? `\nPREVIOUS SNAPSHOT (${prevSnapshot.snapshot_date}):\nTotal: ${formatCurrency(prevSnapshot.total_value)}` : ''}
 `;
 

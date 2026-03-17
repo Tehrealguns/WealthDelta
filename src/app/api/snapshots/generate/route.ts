@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { toDecimal, Decimal } from '@/lib/decimal';
+import { enrichHoldings } from '@/lib/market-data';
 import type { Source, AssetClass, SnapshotBreakdown } from '@/lib/types';
 
 export async function POST() {
@@ -26,12 +27,16 @@ export async function POST() {
     );
   }
 
+  const enriched = await enrichHoldings(holdings);
+
   let totalValue = toDecimal(0);
   const bySource: Record<string, Decimal> = {};
   const byClass: Record<string, Decimal> = {};
 
-  for (const h of holdings) {
-    const val = toDecimal(h.valuation_base);
+  for (let i = 0; i < holdings.length; i++) {
+    const h = holdings[i];
+    const e = enriched[i];
+    const val = toDecimal(e.live_value ?? h.valuation_base);
     totalValue = totalValue.plus(val);
 
     bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);

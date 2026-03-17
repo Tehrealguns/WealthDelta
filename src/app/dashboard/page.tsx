@@ -11,13 +11,24 @@ export default async function DashboardPage() {
     redirect('/login');
   }
 
-  const { data, error } = await supabase
-    .from('holdings')
-    .select('*')
-    .order('source', { ascending: true })
-    .order('asset_class', { ascending: true });
+  const [{ data, error }, { data: settingsData }] = await Promise.all([
+    supabase
+      .from('holdings')
+      .select('*')
+      .order('source', { ascending: true })
+      .order('asset_class', { ascending: true }),
+    supabase
+      .from('user_settings')
+      .select('id')
+      .eq('user_id', userData.user.id)
+      .single(),
+  ]);
 
   const holdings: HoldingRow[] = !error && data ? (data as HoldingRow[]) : [];
+
+  if (holdings.length === 0 && !settingsData) {
+    redirect('/onboard');
+  }
 
   if (holdings.length === 0) {
     redirect('/setup');

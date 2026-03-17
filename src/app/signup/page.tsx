@@ -1,11 +1,11 @@
-import { ShaderBackground } from '@/components/shader-background';
+import { EtheralBackground } from '@/components/etheral-background';
 import { SignupForm } from '@/components/signup-form';
 import Link from 'next/link';
 
 export default function SignupPage() {
   return (
     <>
-      <ShaderBackground />
+      <EtheralBackground />
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
         <div className="w-full max-w-md">
           <div className="mb-8 text-center">

@@ -77,15 +77,19 @@ Return ONLY a JSON array. Each object must have exactly these fields:
 - source: the bank/custodian name (e.g. "UBS", "JBWere", "BellPotter", "Stonehage", "Macquarie")
 - asset_name: full name of the holding
 - asset_class: one of "Equity", "Bond", "Cash", "Alternative", "Private Equity"
-- ticker_symbol: stock ticker if available (e.g. "BHP.AX"), otherwise null
-- valuation_base: numeric value in the statement's base currency (no currency symbols, no commas)
+- ticker_symbol: the stock/ETF ticker for the exchange (e.g. "BHP.AX" for ASX, "AAPL" for NASDAQ, "MSFT" for NYSE). Use Yahoo Finance format. null if not a listed security.
+- quantity: number of shares/units held (e.g. 1500, 250.5). null for cash balances or if not available.
+- valuation_base: total market value in the statement's base currency (no currency symbols, no commas)
 - valuation_date: ISO date "YYYY-MM-DD" from the statement date
+- currency: 3-letter currency code (e.g. "AUD", "USD", "GBP", "CHF")
 - is_static: true
 
 Important:
 - Extract EVERY holding, not just the top ones
-- Include cash balances as asset_class "Cash"
+- Include cash balances as asset_class "Cash" (quantity: null for cash)
+- For equities/ETFs, ALWAYS extract the quantity (number of shares/units) — this is critical for live price tracking
 - For bonds, include face value and market value (use market value for valuation_base)
+- ticker_symbol must be in Yahoo Finance format: ASX stocks end in ".AX" (e.g. "BHP.AX"), London stocks end in ".L", etc.
 - If a holding has no clear value, skip it
 - If you cannot extract structured data, return an empty array []
 
