@@ -2,41 +2,43 @@
 
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 
-const fadeUp = {
+const ease = [0.25, 0.4, 0.25, 1] as [number, number, number, number];
+
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 40 },
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: 0.7, delay: i * 0.15, ease: [0.25, 0.4, 0.25, 1] },
+    transition: { duration: 0.7, delay: i * 0.15, ease },
   }),
 };
 
-const fadeIn = {
+const fadeIn: Variants = {
   hidden: { opacity: 0 },
   visible: (i: number) => ({
     opacity: 1,
-    transition: { duration: 0.6, delay: i * 0.1, ease: 'easeOut' },
+    transition: { duration: 0.6, delay: i * 0.1, ease: 'easeOut' as const },
   }),
 };
 
-const slideFromLeft = {
+const slideFromLeft: Variants = {
   hidden: { opacity: 0, x: -50 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.25, 0.4, 0.25, 1] } },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease } },
 };
 
-const slideFromRight = {
+const slideFromRight: Variants = {
   hidden: { opacity: 0, x: 50 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease: [0.25, 0.4, 0.25, 1] } },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease } },
 };
 
-const scaleIn = {
+const scaleIn: Variants = {
   hidden: { opacity: 0, scale: 0.95 },
   visible: (i: number) => ({
     opacity: 1,
     scale: 1,
-    transition: { duration: 0.5, delay: i * 0.08, ease: [0.25, 0.4, 0.25, 1] },
+    transition: { duration: 0.5, delay: i * 0.08, ease },
   }),
 };
 
