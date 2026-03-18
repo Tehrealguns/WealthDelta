@@ -1,12 +1,13 @@
 'use client';
 
-import { useRef, useMemo, useEffect, useState, Suspense } from 'react';
+import { useRef, useMemo, useEffect, useState, Suspense, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
-import { motion, useScroll, useTransform, useSpring, type Variants } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
+import Lenis from 'lenis';
 
 // ─── Shared scroll store (bridges DOM → Canvas) ─────────────────────
 
@@ -520,19 +521,34 @@ export function LandingScene3D() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onScroll = () => {
-      if (!scrollRef.current) return;
-      const el = scrollRef.current;
+    const wrapper = scrollRef.current;
+    if (!wrapper) return;
+
+    const lenis = new Lenis({
+      wrapper,
+      content: wrapper,
+      lerp: 0.07,
+      smoothWheel: true,
+      wheelMultiplier: 0.8,
+      touchMultiplier: 1.5,
+    });
+
+    lenis.on('scroll', () => {
+      const el = wrapper;
       scrollStore.progress = el.scrollTop / (el.scrollHeight - el.clientHeight);
-    };
-    const el = scrollRef.current;
-    if (el) el.addEventListener('scroll', onScroll, { passive: true });
-    return () => { if (el) el.removeEventListener('scroll', onScroll); };
+    });
+
+    function raf(time: number) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
+
+    return () => lenis.destroy();
   }, []);
 
   return (
     <div className="relative h-screen w-screen bg-[#030305]">
-      {/* 3D background - fixed behind everything */}
       <Canvas
         camera={{ position: [0, 0, 5], fov: 50, near: 0.1, far: 80 }}
         style={{ position: 'fixed', inset: 0, zIndex: 0 }}
@@ -545,7 +561,6 @@ export function LandingScene3D() {
         </Suspense>
       </Canvas>
 
-      {/* DOM content - scrolls on top */}
       <div ref={scrollRef} className="relative z-10 h-screen overflow-y-auto">
         <Nav />
         <HeroSection />
