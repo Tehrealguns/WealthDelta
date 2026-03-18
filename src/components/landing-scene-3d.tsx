@@ -107,46 +107,81 @@ function Scene() {
 
 // ─── Animation variants ─────────────────────────────────────────────
 
-const ease = [0.25, 0.4, 0.25, 1] as [number, number, number, number];
+const ease = [0.16, 1, 0.3, 1] as [number, number, number, number];
 
 const fadeUp: Variants = {
-  hidden: { opacity: 0, y: 60 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.8, delay: i * 0.1, ease },
-  }),
-};
-
-const fadeIn: Variants = {
-  hidden: { opacity: 0 },
-  visible: (i: number) => ({
-    opacity: 1,
-    transition: { duration: 0.7, delay: i * 0.1, ease },
-  }),
-};
-
-const cardFly: Variants = {
-  hidden: { opacity: 0, y: 80, scale: 0.92 },
+  hidden: { opacity: 0, y: 40, scale: 0.96 },
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
     scale: 1,
-    transition: { duration: 0.7, delay: 0.15 + i * 0.12, ease },
+    transition: { duration: 1, delay: i * 0.12, ease },
+  }),
+};
+
+const fadeIn: Variants = {
+  hidden: { opacity: 0, scale: 0.9 },
+  visible: (i: number) => ({
+    opacity: 1,
+    scale: 1,
+    transition: { duration: 0.9, delay: i * 0.1, ease },
+  }),
+};
+
+const cardMorph: Variants = {
+  hidden: (i: number) => {
+    const directions = [
+      { x: -120, y: 60, rotateY: 25, rotateX: -10 },
+      { x: 0, y: 100, rotateY: 0, rotateX: 15 },
+      { x: 120, y: 60, rotateY: -25, rotateX: -10 },
+      { x: -80, y: 40, rotateY: 15, rotateX: 8 },
+      { x: 60, y: 80, rotateY: -20, rotateX: -12 },
+      { x: 100, y: -40, rotateY: -15, rotateX: 10 },
+    ];
+    const d = directions[i % directions.length];
+    return {
+      opacity: 0,
+      x: d.x,
+      y: d.y,
+      scale: 0.4,
+      rotateY: d.rotateY,
+      rotateX: d.rotateX,
+      filter: 'blur(8px)',
+    };
+  },
+  visible: (i: number) => ({
+    opacity: 1,
+    x: 0,
+    y: 0,
+    scale: 1,
+    rotateY: 0,
+    rotateX: 0,
+    filter: 'blur(0px)',
+    transition: {
+      duration: 1,
+      delay: 0.1 + i * 0.15,
+      ease,
+    },
   }),
 };
 
 const slideLeft: Variants = {
-  hidden: { opacity: 0, x: -60 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease } },
+  hidden: { opacity: 0, x: -80, rotateY: 8, scale: 0.92 },
+  visible: {
+    opacity: 1, x: 0, rotateY: 0, scale: 1,
+    transition: { duration: 1, ease },
+  },
 };
 
 const slideRight: Variants = {
-  hidden: { opacity: 0, x: 60 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.7, ease } },
+  hidden: { opacity: 0, x: 80, rotateY: -8, scale: 0.92 },
+  visible: {
+    opacity: 1, x: 0, rotateY: 0, scale: 1,
+    transition: { duration: 1, ease },
+  },
 };
 
-const vp = { once: true, margin: '-100px' as const, amount: 0.3 as const };
+const vp = { once: true, margin: '-80px' as const, amount: 0.2 as const };
 
 // ─── DOM content sections ───────────────────────────────────────────
 
@@ -236,12 +271,12 @@ function ProblemSection() {
           Your wealth is scattered across custodians, currencies, and inboxes.
         </motion.h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4" style={{ perspective: 800 }}>
           {cards.map((card, i) => (
             <motion.div
               key={card.title}
               className="bg-white/[0.03] backdrop-blur-sm border border-white/[0.06] rounded-xl p-6"
-              variants={cardFly}
+              variants={cardMorph}
               initial="hidden"
               whileInView="visible"
               viewport={vp}
@@ -267,7 +302,7 @@ function BriefingSection() {
 
   return (
     <section className="relative py-32 px-6">
-      <div className="mx-auto max-w-4xl flex flex-col md:flex-row gap-12 items-start">
+      <div className="mx-auto max-w-4xl flex flex-col md:flex-row gap-12 items-start" style={{ perspective: 1000 }}>
         <motion.div
           className="flex-1 max-w-sm"
           variants={slideLeft}
@@ -356,12 +391,12 @@ function BanksSection() {
           No API integrations needed. If your bank sends a PDF or email, WealthDelta can read it.
         </motion.p>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3" style={{ perspective: 800 }}>
           {banks.map((bank, i) => (
             <motion.div
               key={bank.name}
               className="bg-white/[0.03] backdrop-blur-sm border border-white/[0.06] rounded-xl p-5"
-              variants={cardFly}
+              variants={cardMorph}
               initial="hidden"
               whileInView="visible"
               viewport={vp}
@@ -387,7 +422,7 @@ function SecuritySection() {
 
   return (
     <section className="relative py-32 px-6">
-      <div className="mx-auto max-w-4xl flex flex-col md:flex-row gap-12 items-start">
+      <div className="mx-auto max-w-4xl flex flex-col md:flex-row gap-12 items-start" style={{ perspective: 1000 }}>
         <motion.div
           className="flex-1 max-w-sm"
           variants={slideLeft}
@@ -404,16 +439,16 @@ function SecuritySection() {
           </p>
         </motion.div>
 
-        <div className="flex-1 w-full max-w-md space-y-3">
+        <div className="flex-1 w-full max-w-md space-y-3" style={{ perspective: 800 }}>
           {stats.map((item, i) => (
             <motion.div
               key={item.label}
               className="flex items-center justify-between bg-white/[0.03] backdrop-blur-sm border border-white/[0.06] rounded-xl px-5 py-4"
-              variants={cardFly}
+              variants={cardMorph}
               initial="hidden"
               whileInView="visible"
               viewport={vp}
-              custom={i}
+              custom={i + 3}
             >
               <span className="text-[13px] text-white/25">{item.label}</span>
               <span className="text-[13px] font-medium text-white/55">{item.value}</span>
@@ -427,40 +462,24 @@ function SecuritySection() {
 
 function CTASection() {
   return (
-    <section className="relative py-32 px-6 text-center">
-      <div className="mx-auto max-w-lg">
-        <motion.h2
-          className="text-3xl md:text-4xl font-semibold tracking-tight text-white/85 mb-4"
-          variants={fadeUp}
-          initial="hidden"
-          whileInView="visible"
-          viewport={vp}
-          custom={0}
-        >
+    <section className="relative py-32 px-6 text-center" style={{ perspective: 1000 }}>
+      <motion.div
+        className="mx-auto max-w-lg"
+        initial={{ opacity: 0, scale: 0.5, rotateX: 20, filter: 'blur(12px)' }}
+        whileInView={{ opacity: 1, scale: 1, rotateX: 0, filter: 'blur(0px)' }}
+        viewport={vp}
+        transition={{ duration: 1.2, ease }}
+      >
+        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white/85 mb-4">
           Five minutes to clarity
-        </motion.h2>
-        <motion.p
-          className="text-[13px] text-white/25 mb-10 max-w-sm mx-auto leading-relaxed"
-          variants={fadeUp}
-          initial="hidden"
-          whileInView="visible"
-          viewport={vp}
-          custom={1}
-        >
+        </h2>
+        <p className="text-[13px] text-white/25 mb-10 max-w-sm mx-auto leading-relaxed">
           Upload your first statement. Get your unified portfolio. Start receiving daily briefings.
-        </motion.p>
-        <motion.div
-          variants={fadeUp}
-          initial="hidden"
-          whileInView="visible"
-          viewport={vp}
-          custom={2}
-        >
-          <Link href="/signup" className="inline-flex items-center gap-2 bg-white text-black text-sm font-medium px-6 py-3 rounded-md hover:bg-white/90 transition-colors">
-            Get Started <ArrowRight className="size-3.5" />
-          </Link>
-        </motion.div>
-      </div>
+        </p>
+        <Link href="/signup" className="inline-flex items-center gap-2 bg-white text-black text-sm font-medium px-6 py-3 rounded-md hover:bg-white/90 transition-colors">
+          Get Started <ArrowRight className="size-3.5" />
+        </Link>
+      </motion.div>
     </section>
   );
 }
