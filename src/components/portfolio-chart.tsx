@@ -98,8 +98,8 @@ export function PortfolioChart({ data }: PortfolioChartProps) {
                   fontSize: 12,
                   color: 'rgba(255,255,255,0.7)',
                 }}
-                formatter={(v: number) => [formatCompact(v), 'Value']}
-                labelFormatter={(l: string) => new Date(l).toLocaleDateString()}
+                formatter={(v) => [formatCompact(Number(v)), 'Value']}
+                labelFormatter={(l) => new Date(String(l)).toLocaleDateString()}
               />
               <Area
                 type="monotone"

@@ -78,7 +78,7 @@ export function AssetDonutChart({ holdings }: AssetDonutChartProps) {
                     fontSize: 12,
                     color: 'rgba(255,255,255,0.7)',
                   }}
-                  formatter={(v: number) => formatCompact(v)}
+                  formatter={(v) => formatCompact(Number(v))}
                 />
               </PieChart>
             </ResponsiveContainer>
