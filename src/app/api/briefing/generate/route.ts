@@ -93,7 +93,7 @@ ${prevSnapshot ? `\nPREVIOUS SNAPSHOT (${prevSnapshot.snapshot_date}):\nTotal: $
 
   const message = await anthropic.messages.create({
     model: ANTHROPIC_MODEL,
-    max_tokens: 2048,
+    max_tokens: 4096,
     system: systemPrompt,
     messages: [
       {

@@ -6,6 +6,12 @@ import { Upload, FileUp, Loader2, CheckCircle2, X, ArrowRight } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 interface UploadedFile {
   file: File;
   status: 'pending' | 'uploading' | 'done' | 'error';
@@ -31,6 +37,10 @@ export function SetupWizard({ userEmail, hasExistingHoldings }: SetupWizardProps
     if (pdfs.length === 0) {
       toast.error('Only PDF files are supported');
       return;
+    }
+    const oversized = pdfs.filter((f) => f.size > 45 * 1024 * 1024);
+    if (oversized.length > 0) {
+      toast.error(`${oversized.length} file(s) exceed 45 MB and may fail to process`);
     }
     setFiles((prev) => [
       ...prev,
@@ -184,7 +194,10 @@ export function SetupWizard({ userEmail, hasExistingHoldings }: SetupWizardProps
               className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3"
             >
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-white/60 truncate">{f.file.name}</p>
+                <p className="text-sm text-white/60 truncate">
+                  {f.file.name}
+                  <span className="ml-2 text-white/15 text-xs">{formatFileSize(f.file.size)}</span>
+                </p>
                 <p className="text-xs text-white/20">
                   {f.status === 'pending' && 'Ready to process'}
                   {f.status === 'uploading' && 'Extracting with AI...'}

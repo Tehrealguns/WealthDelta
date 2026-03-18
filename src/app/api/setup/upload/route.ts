@@ -4,6 +4,8 @@ import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { getBankPrompt } from '@/lib/bank-registry';
 import type { UnifiedPortfolio } from '@/lib/types';
 
+export const maxDuration = 300;
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest) {
 
   const message = await anthropic.messages.create({
     model: ANTHROPIC_MODEL,
-    max_tokens: 8192,
+    max_tokens: 16384,
     messages: [
       {
         role: 'user',
