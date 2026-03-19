@@ -6,11 +6,8 @@ import { scrollStore } from '../scrollStore';
 
 gsap.registerPlugin(ScrollTrigger);
 
-export function useScrollProgress(
-  scrollRef: React.RefObject<HTMLDivElement | null>,
-) {
+export function useScrollProgress(wrapper: HTMLDivElement | null) {
   useEffect(() => {
-    const wrapper = scrollRef.current;
     if (!wrapper) return;
 
     const prefersReduced =
@@ -19,10 +16,10 @@ export function useScrollProgress(
     const lenis = new Lenis({
       wrapper,
       content: wrapper,
-      lerp: prefersReduced ? 1 : 0.045,
+      lerp: prefersReduced ? 1 : 0.06,
       smoothWheel: !prefersReduced,
-      wheelMultiplier: 0.7,
-      touchMultiplier: 1.2,
+      wheelMultiplier: 0.8,
+      touchMultiplier: 1.4,
     });
 
     lenis.on('scroll', ScrollTrigger.update);
@@ -47,5 +44,5 @@ export function useScrollProgress(
       lenis.destroy();
       ScrollTrigger.getAll().forEach((st) => st.kill());
     };
-  }, [scrollRef]);
+  }, [wrapper]);
 }
