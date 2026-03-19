@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "blender": {
+      "command": "uvx",
+      "args": ["blender-mcp"]
+    },
+    "three-js": {
+      "command": "npx",
+      "args": ["-y", "three-js-mcp"]
+    },
+    "sketchfab-models": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-threejs"]
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "firecrawl": {
+      "command": "npx",
+      "args": ["-y", "firecrawl-mcp"],
+      "env": {
+        "FIRECRAWL_API_KEY": "YOUR_KEY_HERE"
+      }
+    }
+  }
+}

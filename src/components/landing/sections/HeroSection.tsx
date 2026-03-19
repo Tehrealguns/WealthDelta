@@ -7,9 +7,9 @@ import { fadeUp, fadeIn } from '../animations';
 
 export function HeroSection() {
   return (
-    <section className="relative flex min-h-screen flex-col items-center justify-center px-6 text-center">
+    <section className="relative flex min-h-[100vh] flex-col items-center justify-center px-6 text-center">
       <motion.div
-        className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#CA8A04]/20 bg-[#CA8A04]/5 px-4 py-1.5"
+        className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#CA8A04]/20 bg-[#CA8A04]/[0.06] px-4 py-1.5 backdrop-blur-md"
         variants={fadeUp}
         initial="hidden"
         animate="visible"
@@ -22,7 +22,7 @@ export function HeroSection() {
       </motion.div>
 
       <motion.h1
-        className="text-[clamp(2.5rem,7vw,5rem)] font-semibold tracking-[-0.04em] leading-[1.08]"
+        className="text-[clamp(2.8rem,8vw,5.5rem)] font-semibold tracking-[-0.04em] leading-[1.05]"
         variants={fadeUp}
         initial="hidden"
         animate="visible"
@@ -38,7 +38,7 @@ export function HeroSection() {
       </motion.h1>
 
       <motion.p
-        className="mt-6 max-w-md text-[15px] text-white/35 leading-relaxed"
+        className="mt-6 max-w-md text-[15px] text-white/30 leading-relaxed"
         variants={fadeUp}
         initial="hidden"
         animate="visible"
@@ -57,7 +57,7 @@ export function HeroSection() {
       >
         <Link
           href="/signup"
-          className="group inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#CA8A04] px-6 py-3 text-sm font-medium text-black transition-all hover:bg-[#d4a528] hover:shadow-[0_0_30px_rgba(202,138,4,0.25)]"
+          className="group inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#CA8A04] px-6 py-3 text-sm font-medium text-black transition-all hover:bg-[#d4a528] hover:shadow-[0_0_30px_rgba(202,138,4,0.3)]"
         >
           Create Account
           <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
@@ -71,22 +71,26 @@ export function HeroSection() {
       </motion.div>
 
       <motion.div
-        className="mt-20 flex flex-wrap items-center justify-center gap-8 text-[11px] tracking-widest text-white/[0.08] uppercase"
+        className="mt-24 flex flex-wrap items-center justify-center gap-8 text-[11px] tracking-widest text-white/[0.06] uppercase"
         variants={fadeIn}
         initial="hidden"
         animate="visible"
         custom={6}
       >
-        {[
-          'UBS',
-          'JBWere',
-          'Stonehage Fleming',
-          'Macquarie',
-          'Bell Potter',
-          'Morgan Stanley',
-        ].map((n) => (
+        {['UBS', 'JBWere', 'Stonehage Fleming', 'Macquarie', 'Bell Potter', 'Morgan Stanley'].map((n) => (
           <span key={n}>{n}</span>
         ))}
+      </motion.div>
+
+      <motion.div
+        className="absolute bottom-8 left-1/2 -translate-x-1/2"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 2, duration: 1, repeat: Infinity, repeatType: 'reverse' }}
+      >
+        <div className="size-5 rounded-full border border-white/[0.08] flex items-center justify-center">
+          <div className="size-1 rounded-full bg-white/20" />
+        </div>
       </motion.div>
     </section>
   );

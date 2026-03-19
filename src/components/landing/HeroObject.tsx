@@ -5,96 +5,145 @@ import { scrollStore } from './scrollStore';
 
 export function HeroObject({ reducedMotion = false }: { reducedMotion?: boolean }) {
   const groupRef = useRef<THREE.Group>(null);
-  const innerRef = useRef<THREE.Mesh>(null);
-  const wireRef = useRef<THREE.LineSegments>(null);
+  const coreRef = useRef<THREE.Mesh>(null);
+  const shellRef = useRef<THREE.LineSegments>(null);
+  const outerRef = useRef<THREE.LineSegments>(null);
+  const ringsRef = useRef<THREE.Group>(null);
 
-  const tetraGeo = useMemo(() => new THREE.TetrahedronGeometry(1.8, 0), []);
-  const edgesGeo = useMemo(() => new THREE.EdgesGeometry(tetraGeo), [tetraGeo]);
-  const outerTetraGeo = useMemo(() => new THREE.TetrahedronGeometry(2.4, 0), []);
-  const outerEdgesGeo = useMemo(() => new THREE.EdgesGeometry(outerTetraGeo), [outerTetraGeo]);
+  const coreGeo = useMemo(() => new THREE.TetrahedronGeometry(2, 0), []);
+  const shellEdges = useMemo(() => new THREE.EdgesGeometry(new THREE.TetrahedronGeometry(2.1, 0)), []);
+  const outerEdges = useMemo(() => new THREE.EdgesGeometry(new THREE.TetrahedronGeometry(3.2, 0)), []);
 
   useFrame((state) => {
-    if (!groupRef.current) return;
+    if (!groupRef.current || reducedMotion) return;
+
     const t = state.clock.elapsedTime;
     const scroll = scrollStore.progress;
 
-    if (reducedMotion) return;
+    const breathe = Math.sin(t * 0.4) * 0.06;
+    groupRef.current.position.y = breathe;
 
-    groupRef.current.rotation.y = t * 0.15 + scroll * Math.PI * 2;
-    groupRef.current.rotation.x = Math.sin(t * 0.08) * 0.15;
-    groupRef.current.position.y = Math.sin(t * 0.4) * 0.08;
+    groupRef.current.rotation.y = t * 0.12 + scroll * Math.PI * 0.8;
+    groupRef.current.rotation.x = Math.sin(t * 0.07) * 0.1 + scroll * 0.3;
+    groupRef.current.rotation.z = Math.cos(t * 0.09) * 0.05;
 
-    if (innerRef.current) {
-      const mat = innerRef.current.material as THREE.MeshStandardMaterial;
-      mat.emissiveIntensity = 0.15 + Math.sin(t * 0.6) * 0.05;
+    if (coreRef.current) {
+      const mat = coreRef.current.material as THREE.MeshStandardMaterial;
+      mat.emissiveIntensity = 0.2 + Math.sin(t * 0.5) * 0.08 + scroll * 0.15;
     }
 
-    if (wireRef.current) {
-      wireRef.current.rotation.y = -t * 0.08;
-      wireRef.current.rotation.z = t * 0.05;
-      const scale = 1 + scroll * 0.15;
-      wireRef.current.scale.setScalar(scale);
+    if (shellRef.current) {
+      const mat = shellRef.current.material as THREE.LineBasicMaterial;
+      mat.opacity = 0.6 + Math.sin(t * 0.3) * 0.1;
+    }
+
+    if (outerRef.current) {
+      outerRef.current.rotation.y = -t * 0.06;
+      outerRef.current.rotation.z = t * 0.04;
+      const expand = 1 + scroll * 0.25 + Math.sin(t * 0.2) * 0.03;
+      outerRef.current.scale.setScalar(expand);
+      const mat = outerRef.current.material as THREE.LineBasicMaterial;
+      mat.opacity = 0.15 + scroll * 0.1;
+    }
+
+    if (ringsRef.current) {
+      ringsRef.current.rotation.y = t * 0.08;
+      ringsRef.current.rotation.x = Math.sin(t * 0.05) * 0.1;
     }
   });
 
   return (
-    <group ref={groupRef} position={[0, 0.3, 0]}>
-      <mesh ref={innerRef} geometry={tetraGeo} castShadow receiveShadow>
+    <group ref={groupRef}>
+      <mesh ref={coreRef} geometry={coreGeo} castShadow receiveShadow>
         <meshStandardMaterial
           color="#CA8A04"
           metalness={1}
-          roughness={0.18}
+          roughness={0.15}
           emissive="#CA8A04"
-          emissiveIntensity={0.15}
+          emissiveIntensity={0.2}
         />
       </mesh>
 
-      <lineSegments geometry={edgesGeo}>
-        <lineBasicMaterial color="#e6be6a" transparent opacity={0.7} />
+      <lineSegments ref={shellRef} geometry={shellEdges}>
+        <lineBasicMaterial color="#e6be6a" transparent opacity={0.6} />
       </lineSegments>
 
-      <lineSegments ref={wireRef} geometry={outerEdgesGeo}>
-        <lineBasicMaterial color="#CA8A04" transparent opacity={0.25} />
+      <lineSegments ref={outerRef} geometry={outerEdges}>
+        <lineBasicMaterial color="#CA8A04" transparent opacity={0.15} />
       </lineSegments>
 
-      <GlassAccents />
+      <OrbitalRings ref={ringsRef} />
+      <VertexBeams />
     </group>
   );
 }
 
-function GlassAccents() {
-  const ref = useRef<THREE.Group>(null);
+import { forwardRef } from 'react';
 
-  useFrame((state) => {
-    if (!ref.current) return;
-    ref.current.rotation.y = state.clock.elapsedTime * 0.1;
-  });
-
-  const accents = useMemo(
+const OrbitalRings = forwardRef<THREE.Group>(function OrbitalRings(_, ref) {
+  const rings = useMemo(
     () => [
-      { pos: [3.2, 0.5, -1] as [number, number, number], scale: 0.15 },
-      { pos: [-2.8, -0.8, 1.5] as [number, number, number], scale: 0.12 },
-      { pos: [1.5, 2.2, -2] as [number, number, number], scale: 0.1 },
-      { pos: [-1.8, 1.8, 2] as [number, number, number], scale: 0.08 },
+      { radius: 4, rotation: [0.3, 0, 0.8] as [number, number, number], opacity: 0.08 },
+      { radius: 5.5, rotation: [1.2, 0.5, 0.2] as [number, number, number], opacity: 0.05 },
+      { radius: 7, rotation: [0.7, 1.0, 0.4] as [number, number, number], opacity: 0.03 },
     ],
     [],
   );
 
   return (
     <group ref={ref}>
-      {accents.map((a, i) => (
-        <mesh key={i} position={a.pos}>
-          <octahedronGeometry args={[a.scale]} />
-          <meshStandardMaterial
-            color="#CA8A04"
-            metalness={0.9}
-            roughness={0.3}
-            emissive="#CA8A04"
-            emissiveIntensity={0.1}
-            transparent
-            opacity={0.35}
-          />
+      {rings.map((ring, i) => (
+        <mesh key={i} rotation={ring.rotation}>
+          <torusGeometry args={[ring.radius, 0.008, 8, 128]} />
+          <meshBasicMaterial color="#CA8A04" transparent opacity={ring.opacity} />
         </mesh>
+      ))}
+    </group>
+  );
+});
+
+function VertexBeams() {
+  const ref = useRef<THREE.Group>(null);
+
+  const lines = useMemo(() => {
+    const tetra = new THREE.TetrahedronGeometry(2, 0);
+    const pos = tetra.getAttribute('position');
+    const verts = new Set<string>();
+    const uniqueVerts: THREE.Vector3[] = [];
+
+    for (let i = 0; i < pos.count; i++) {
+      const v = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
+      const key = `${v.x.toFixed(2)},${v.y.toFixed(2)},${v.z.toFixed(2)}`;
+      if (!verts.has(key)) {
+        verts.add(key);
+        uniqueVerts.push(v);
+      }
+    }
+
+    return uniqueVerts.map((v) => {
+      const dir = v.clone().normalize();
+      const end = dir.multiplyScalar(8);
+      const points = [v, end];
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      return geo;
+    });
+  }, []);
+
+  useFrame((state) => {
+    if (!ref.current) return;
+    ref.current.rotation.y = state.clock.elapsedTime * 0.12;
+  });
+
+  return (
+    <group ref={ref}>
+      {lines.map((geo, i) => (
+        <lineSegments key={i} geometry={geo}>
+          <lineBasicMaterial
+            color="#CA8A04"
+            transparent
+            opacity={0.04}
+          />
+        </lineSegments>
       ))}
     </group>
   );

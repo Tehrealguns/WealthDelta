@@ -19,12 +19,12 @@ export function PostEffects({ reducedMotion = false, mobile = false }: PostEffec
     return (
       <EffectComposer multisampling={0}>
         <Bloom
-          luminanceThreshold={0.6}
-          luminanceSmoothing={0.4}
-          intensity={0.8}
+          luminanceThreshold={0.4}
+          luminanceSmoothing={0.5}
+          intensity={1.2}
           mipmapBlur
         />
-        <Vignette offset={0.25} darkness={0.7} />
+        <Vignette offset={0.3} darkness={0.8} />
       </EffectComposer>
     );
   }
@@ -32,20 +32,20 @@ export function PostEffects({ reducedMotion = false, mobile = false }: PostEffec
   return (
     <EffectComposer multisampling={4}>
       <Bloom
-        luminanceThreshold={0.6}
-        luminanceSmoothing={0.4}
-        intensity={0.8}
+        luminanceThreshold={0.3}
+        luminanceSmoothing={0.5}
+        intensity={1.4}
         mipmapBlur
       />
-      <Vignette offset={0.25} darkness={0.7} />
+      <Vignette offset={0.3} darkness={0.75} />
       <Noise
         premultiply
         blendFunction={BlendFunction.ADD}
-        opacity={0.015}
+        opacity={0.012}
       />
       <ChromaticAberration
         blendFunction={BlendFunction.NORMAL}
-        offset={[0.0008, 0.0008]}
+        offset={[0.0006, 0.0006]}
       />
     </EffectComposer>
   );

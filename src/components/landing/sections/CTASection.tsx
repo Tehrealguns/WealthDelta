@@ -7,19 +7,11 @@ import { ease } from '../animations';
 
 export function CTASection() {
   return (
-    <section
-      className="relative py-32 px-6 text-center"
-      style={{ perspective: 1000 }}
-    >
+    <section className="relative py-40 px-6 text-center" style={{ perspective: 1000 }}>
       <motion.div
         className="mx-auto max-w-lg"
         initial={{ opacity: 0, scale: 0.5, rotateX: 20, filter: 'blur(12px)' }}
-        whileInView={{
-          opacity: 1,
-          scale: 1,
-          rotateX: 0,
-          filter: 'blur(0px)',
-        }}
+        whileInView={{ opacity: 1, scale: 1, rotateX: 0, filter: 'blur(0px)' }}
         viewport={{ once: true, margin: '-80px', amount: 0.2 }}
         transition={{ duration: 1.2, ease }}
       >
@@ -35,7 +27,7 @@ export function CTASection() {
         </p>
         <Link
           href="/signup"
-          className="group inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#CA8A04] px-8 py-3.5 text-sm font-medium text-black transition-all hover:bg-[#d4a528] hover:shadow-[0_0_40px_rgba(202,138,4,0.3)]"
+          className="group inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#CA8A04] px-8 py-3.5 text-sm font-medium text-black transition-all hover:bg-[#d4a528] hover:shadow-[0_0_50px_rgba(202,138,4,0.35)]"
         >
           Get Started
           <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
