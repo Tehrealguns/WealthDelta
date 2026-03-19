@@ -19,10 +19,10 @@ export function useScrollProgress(
     const lenis = new Lenis({
       wrapper,
       content: wrapper,
-      lerp: prefersReduced ? 1 : 0.07,
+      lerp: prefersReduced ? 1 : 0.045,
       smoothWheel: !prefersReduced,
-      wheelMultiplier: 0.8,
-      touchMultiplier: 1.5,
+      wheelMultiplier: 0.7,
+      touchMultiplier: 1.2,
     });
 
     lenis.on('scroll', ScrollTrigger.update);

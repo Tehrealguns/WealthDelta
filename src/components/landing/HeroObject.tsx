@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, forwardRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { scrollStore } from './scrollStore';
@@ -20,35 +20,34 @@ export function HeroObject({ reducedMotion = false }: { reducedMotion?: boolean 
     const t = state.clock.elapsedTime;
     const scroll = scrollStore.progress;
 
-    const breathe = Math.sin(t * 0.4) * 0.06;
-    groupRef.current.position.y = breathe;
-
-    groupRef.current.rotation.y = t * 0.12 + scroll * Math.PI * 0.8;
-    groupRef.current.rotation.x = Math.sin(t * 0.07) * 0.1 + scroll * 0.3;
-    groupRef.current.rotation.z = Math.cos(t * 0.09) * 0.05;
+    groupRef.current.position.y = Math.sin(t * 0.35) * 0.08;
+    groupRef.current.rotation.y = t * 0.1 + scroll * Math.PI * 0.7;
+    groupRef.current.rotation.x = Math.sin(t * 0.06) * 0.12 + scroll * 0.25;
+    groupRef.current.rotation.z = Math.cos(t * 0.08) * 0.06;
 
     if (coreRef.current) {
       const mat = coreRef.current.material as THREE.MeshStandardMaterial;
-      mat.emissiveIntensity = 0.2 + Math.sin(t * 0.5) * 0.08 + scroll * 0.15;
+      mat.emissiveIntensity = 0.2 + Math.sin(t * 0.4) * 0.1 + scroll * 0.15;
     }
 
     if (shellRef.current) {
       const mat = shellRef.current.material as THREE.LineBasicMaterial;
-      mat.opacity = 0.6 + Math.sin(t * 0.3) * 0.1;
+      mat.opacity = 0.55 + Math.sin(t * 0.25) * 0.15;
     }
 
     if (outerRef.current) {
-      outerRef.current.rotation.y = -t * 0.06;
-      outerRef.current.rotation.z = t * 0.04;
-      const expand = 1 + scroll * 0.25 + Math.sin(t * 0.2) * 0.03;
+      outerRef.current.rotation.y = -t * 0.05;
+      outerRef.current.rotation.z = t * 0.035;
+      const expand = 1 + scroll * 0.2 + Math.sin(t * 0.15) * 0.04;
       outerRef.current.scale.setScalar(expand);
       const mat = outerRef.current.material as THREE.LineBasicMaterial;
-      mat.opacity = 0.15 + scroll * 0.1;
+      mat.opacity = 0.12 + scroll * 0.1 + Math.sin(t * 0.2) * 0.03;
     }
 
     if (ringsRef.current) {
-      ringsRef.current.rotation.y = t * 0.08;
-      ringsRef.current.rotation.x = Math.sin(t * 0.05) * 0.1;
+      ringsRef.current.rotation.y = t * 0.06;
+      ringsRef.current.rotation.x = Math.sin(t * 0.04) * 0.12;
+      ringsRef.current.rotation.z = Math.cos(t * 0.03) * 0.06;
     }
   });
 
@@ -65,11 +64,11 @@ export function HeroObject({ reducedMotion = false }: { reducedMotion?: boolean 
       </mesh>
 
       <lineSegments ref={shellRef} geometry={shellEdges}>
-        <lineBasicMaterial color="#e6be6a" transparent opacity={0.6} />
+        <lineBasicMaterial color="#e6be6a" transparent opacity={0.55} />
       </lineSegments>
 
       <lineSegments ref={outerRef} geometry={outerEdges}>
-        <lineBasicMaterial color="#CA8A04" transparent opacity={0.15} />
+        <lineBasicMaterial color="#CA8A04" transparent opacity={0.12} />
       </lineSegments>
 
       <OrbitalRings ref={ringsRef} />
@@ -78,20 +77,33 @@ export function HeroObject({ reducedMotion = false }: { reducedMotion?: boolean 
   );
 }
 
-import { forwardRef } from 'react';
-
 const OrbitalRings = forwardRef<THREE.Group>(function OrbitalRings(_, ref) {
+  const innerRef = useRef<THREE.Group>(null);
+
   const rings = useMemo(
     () => [
-      { radius: 4, rotation: [0.3, 0, 0.8] as [number, number, number], opacity: 0.08 },
-      { radius: 5.5, rotation: [1.2, 0.5, 0.2] as [number, number, number], opacity: 0.05 },
-      { radius: 7, rotation: [0.7, 1.0, 0.4] as [number, number, number], opacity: 0.03 },
+      { radius: 4, rotation: [0.3, 0, 0.8] as [number, number, number], opacity: 0.07, speed: 1 },
+      { radius: 5.5, rotation: [1.2, 0.5, 0.2] as [number, number, number], opacity: 0.05, speed: -0.7 },
+      { radius: 7, rotation: [0.7, 1.0, 0.4] as [number, number, number], opacity: 0.035, speed: 0.5 },
     ],
     [],
   );
 
+  useFrame((state) => {
+    if (!innerRef.current) return;
+    const children = innerRef.current.children;
+    const t = state.clock.elapsedTime;
+    for (let i = 0; i < children.length; i++) {
+      children[i].rotation.z = t * 0.03 * rings[i].speed;
+    }
+  });
+
   return (
-    <group ref={ref}>
+    <group ref={(node) => {
+      innerRef.current = node;
+      if (typeof ref === 'function') ref(node);
+      else if (ref) ref.current = node;
+    }}>
       {rings.map((ring, i) => (
         <mesh key={i} rotation={ring.rotation}>
           <torusGeometry args={[ring.radius, 0.008, 8, 128]} />
@@ -122,27 +134,23 @@ function VertexBeams() {
 
     return uniqueVerts.map((v) => {
       const dir = v.clone().normalize();
-      const end = dir.multiplyScalar(8);
-      const points = [v, end];
-      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const end = dir.multiplyScalar(9);
+      const geo = new THREE.BufferGeometry().setFromPoints([v, end]);
       return geo;
     });
   }, []);
 
   useFrame((state) => {
     if (!ref.current) return;
-    ref.current.rotation.y = state.clock.elapsedTime * 0.12;
+    ref.current.rotation.y = state.clock.elapsedTime * 0.1;
+    ref.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.03) * 0.05;
   });
 
   return (
     <group ref={ref}>
       {lines.map((geo, i) => (
         <lineSegments key={i} geometry={geo}>
-          <lineBasicMaterial
-            color="#CA8A04"
-            transparent
-            opacity={0.04}
-          />
+          <lineBasicMaterial color="#CA8A04" transparent opacity={0.04} />
         </lineSegments>
       ))}
     </group>

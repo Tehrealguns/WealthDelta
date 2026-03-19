@@ -8,19 +8,21 @@ interface ParticlesProps {
   reducedMotion?: boolean;
 }
 
-export function Particles({ count = 600, reducedMotion = false }: ParticlesProps) {
+export function Particles({ count = 700, reducedMotion = false }: ParticlesProps) {
   const orbitalRef = useRef<THREE.Points>(null);
   const ambientRef = useRef<THREE.Points>(null);
+  const driftRef = useRef<THREE.Points>(null);
   const effectiveCount = reducedMotion ? Math.floor(count / 3) : count;
-  const orbitalCount = Math.floor(effectiveCount * 0.6);
-  const ambientCount = effectiveCount - orbitalCount;
+  const orbitalCount = Math.floor(effectiveCount * 0.5);
+  const ambientCount = Math.floor(effectiveCount * 0.3);
+  const driftCount = effectiveCount - orbitalCount - ambientCount;
 
   const orbitalPositions = useMemo(() => {
     const pos = new Float32Array(orbitalCount * 3);
     for (let i = 0; i < orbitalCount; i++) {
-      const r = 3 + Math.random() * 8;
+      const r = 3.5 + Math.random() * 7;
       const angle = Math.random() * Math.PI * 2;
-      const tilt = (Math.random() - 0.5) * 3;
+      const tilt = (Math.random() - 0.5) * 2.5;
       pos[i * 3] = Math.cos(angle) * r;
       pos[i * 3 + 1] = tilt;
       pos[i * 3 + 2] = Math.sin(angle) * r;
@@ -31,24 +33,45 @@ export function Particles({ count = 600, reducedMotion = false }: ParticlesProps
   const ambientPositions = useMemo(() => {
     const pos = new Float32Array(ambientCount * 3);
     for (let i = 0; i < ambientCount; i++) {
-      pos[i * 3] = (Math.random() - 0.5) * 40;
-      pos[i * 3 + 1] = (Math.random() - 0.5) * 25;
-      pos[i * 3 + 2] = (Math.random() - 0.5) * 40;
+      pos[i * 3] = (Math.random() - 0.5) * 50;
+      pos[i * 3 + 1] = (Math.random() - 0.5) * 30;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 50;
     }
     return pos;
   }, [ambientCount]);
 
-  useFrame((_, dt) => {
+  const driftPositions = useMemo(() => {
+    const pos = new Float32Array(driftCount * 3);
+    for (let i = 0; i < driftCount; i++) {
+      const r = 5 + Math.random() * 12;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      pos[i * 3 + 2] = r * Math.cos(phi);
+    }
+    return pos;
+  }, [driftCount]);
+
+  useFrame((state, dt) => {
     if (reducedMotion) return;
     const scroll = scrollStore.progress;
+    const t = state.clock.elapsedTime;
 
     if (orbitalRef.current) {
-      orbitalRef.current.rotation.y += dt * (0.015 + scroll * 0.02);
-      orbitalRef.current.rotation.x = Math.sin(scroll * Math.PI) * 0.1;
+      orbitalRef.current.rotation.y += dt * (0.025 + scroll * 0.03);
+      orbitalRef.current.rotation.x = Math.sin(t * 0.03) * 0.08;
+      orbitalRef.current.rotation.z = Math.cos(t * 0.02) * 0.04;
     }
 
     if (ambientRef.current) {
-      ambientRef.current.rotation.y += dt * 0.002;
+      ambientRef.current.rotation.y += dt * 0.006;
+      ambientRef.current.rotation.x += dt * 0.002;
+    }
+
+    if (driftRef.current) {
+      driftRef.current.rotation.y -= dt * 0.01;
+      driftRef.current.rotation.z += dt * 0.004;
     }
   });
 
@@ -59,10 +82,10 @@ export function Particles({ count = 600, reducedMotion = false }: ParticlesProps
           <bufferAttribute attach="attributes-position" args={[orbitalPositions, 3]} />
         </bufferGeometry>
         <pointsMaterial
-          size={0.035}
+          size={0.04}
           color="#d4a853"
           transparent
-          opacity={0.35}
+          opacity={0.4}
           sizeAttenuation
           depthWrite={false}
         />
@@ -73,10 +96,24 @@ export function Particles({ count = 600, reducedMotion = false }: ParticlesProps
           <bufferAttribute attach="attributes-position" args={[ambientPositions, 3]} />
         </bufferGeometry>
         <pointsMaterial
-          size={0.025}
+          size={0.02}
           color="#ffffff"
           transparent
-          opacity={0.12}
+          opacity={0.1}
+          sizeAttenuation
+          depthWrite={false}
+        />
+      </points>
+
+      <points ref={driftRef}>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" args={[driftPositions, 3]} />
+        </bufferGeometry>
+        <pointsMaterial
+          size={0.03}
+          color="#CA8A04"
+          transparent
+          opacity={0.15}
           sizeAttenuation
           depthWrite={false}
         />
