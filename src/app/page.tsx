@@ -5,8 +5,9 @@ import { WebGLErrorBoundary } from '@/components/webgl-fallback';
 import { ShaderBackground } from '@/components/shader-background';
 import { HeroSection } from '@/components/hero-section';
 
-const LandingScene3D = dynamic(
-  () => import('@/components/landing-scene-3d').then((mod) => mod.LandingScene3D),
+const LandingScene = dynamic(
+  () =>
+    import('@/components/landing/LandingScene').then((mod) => mod.LandingScene),
   { ssr: false },
 );
 
@@ -22,7 +23,7 @@ function FlatFallback() {
 export default function Home() {
   return (
     <WebGLErrorBoundary fallback={<FlatFallback />}>
-      <LandingScene3D />
+      <LandingScene />
     </WebGLErrorBoundary>
   );
 }

@@ -125,6 +125,15 @@
   animation: grid 15s linear infinite;
 }
 
+@keyframes gold-glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(202, 138, 4, 0.15); }
+  50% { box-shadow: 0 0 40px rgba(202, 138, 4, 0.3); }
+}
+
+@utility animate-gold-glow {
+  animation: gold-glow-pulse 3s ease-in-out infinite;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
