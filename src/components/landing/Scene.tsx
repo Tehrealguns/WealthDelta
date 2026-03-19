@@ -31,11 +31,16 @@ export function Scene({ reducedMotion = false, mobile = false }: SceneProps) {
 
 function DriftingStars({ mobile, reducedMotion }: { mobile: boolean; reducedMotion: boolean }) {
   const ref = useRef<THREE.Group>(null);
+  const smoothMx = useRef(0);
+  const smoothMy = useRef(0);
 
   useFrame((_, dt) => {
     if (!ref.current || reducedMotion) return;
-    ref.current.rotation.y += dt * 0.003;
-    ref.current.rotation.x += dt * 0.001;
+    smoothMx.current += (scrollStore.mouseX - smoothMx.current) * 0.01;
+    smoothMy.current += (scrollStore.mouseY - smoothMy.current) * 0.01;
+
+    ref.current.rotation.y += dt * 0.003 + smoothMx.current * dt * 0.02;
+    ref.current.rotation.x += dt * 0.001 + smoothMy.current * dt * 0.01;
   });
 
   return (
@@ -55,6 +60,7 @@ function DriftingStars({ mobile, reducedMotion }: { mobile: boolean; reducedMoti
 
 function GroundGrid() {
   const ref = useRef<THREE.GridHelper>(null);
+  const smoothMx = useRef(0);
 
   const gridArgs = useMemo(
     () => [50, 50, '#CA8A04', '#CA8A04'] as [number, number, string, string],
@@ -63,8 +69,11 @@ function GroundGrid() {
 
   useFrame((state) => {
     if (!ref.current) return;
+    smoothMx.current += (scrollStore.mouseX - smoothMx.current) * 0.02;
     const mat = ref.current.material as THREE.Material;
-    mat.opacity = 0.025 + scrollStore.progress * 0.02 + Math.sin(state.clock.elapsedTime * 0.3) * 0.005;
+    mat.opacity = 0.025 + scrollStore.progress * 0.02
+      + Math.sin(state.clock.elapsedTime * 0.3) * 0.005;
+    ref.current.rotation.y = smoothMx.current * 0.05;
   });
 
   return (

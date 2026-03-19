@@ -1,10 +1,11 @@
 'use client';
 
-import { useRef, useState, useEffect, Suspense } from 'react';
+import { useRef, useState, useEffect, useCallback, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Preload } from '@react-three/drei';
 import * as THREE from 'three';
 import { Scene } from './Scene';
+import { scrollStore } from './scrollStore';
 import { useScrollProgress } from './hooks/useScrollProgress';
 import { Nav } from './sections/Nav';
 import { HeroSection } from './sections/HeroSection';
@@ -37,17 +38,29 @@ export function LandingScene() {
   const [reducedMotion, setReducedMotion] = useState(false);
   const [mobile, setMobile] = useState(false);
 
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    scrollStore.mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+    scrollStore.mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+  }, []);
+
   useEffect(() => {
     setMounted(true);
-    setReducedMotion(
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    );
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setReducedMotion(reduced);
     setMobile(window.innerWidth < 768);
+
+    if (!reduced) {
+      window.addEventListener('mousemove', handleMouseMove);
+    }
 
     const handleResize = () => setMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [handleMouseMove]);
 
   useScrollProgress(scrollRef);
 

@@ -12,6 +12,9 @@ export function Particles({ count = 700, reducedMotion = false }: ParticlesProps
   const orbitalRef = useRef<THREE.Points>(null);
   const ambientRef = useRef<THREE.Points>(null);
   const driftRef = useRef<THREE.Points>(null);
+  const smoothMx = useRef(0);
+  const smoothMy = useRef(0);
+
   const effectiveCount = reducedMotion ? Math.floor(count / 3) : count;
   const orbitalCount = Math.floor(effectiveCount * 0.5);
   const ambientCount = Math.floor(effectiveCount * 0.3);
@@ -58,20 +61,29 @@ export function Particles({ count = 700, reducedMotion = false }: ParticlesProps
     const scroll = scrollStore.progress;
     const t = state.clock.elapsedTime;
 
+    smoothMx.current += (scrollStore.mouseX - smoothMx.current) * 0.02;
+    smoothMy.current += (scrollStore.mouseY - smoothMy.current) * 0.02;
+    const mx = smoothMx.current;
+    const my = smoothMy.current;
+
     if (orbitalRef.current) {
       orbitalRef.current.rotation.y += dt * (0.025 + scroll * 0.03);
-      orbitalRef.current.rotation.x = Math.sin(t * 0.03) * 0.08;
-      orbitalRef.current.rotation.z = Math.cos(t * 0.02) * 0.04;
+      orbitalRef.current.rotation.x = Math.sin(t * 0.03) * 0.08 + my * 0.08;
+      orbitalRef.current.rotation.z = Math.cos(t * 0.02) * 0.04 + mx * 0.06;
     }
 
     if (ambientRef.current) {
       ambientRef.current.rotation.y += dt * 0.006;
       ambientRef.current.rotation.x += dt * 0.002;
+      ambientRef.current.position.x = mx * 0.5;
+      ambientRef.current.position.y = my * 0.3;
     }
 
     if (driftRef.current) {
       driftRef.current.rotation.y -= dt * 0.01;
       driftRef.current.rotation.z += dt * 0.004;
+      driftRef.current.position.x = mx * 0.3;
+      driftRef.current.position.y = my * 0.2;
     }
   });
 
