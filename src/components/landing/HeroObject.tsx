@@ -11,8 +11,10 @@ export function HeroObject({ reducedMotion = false }: { reducedMotion?: boolean 
   const icoRef = useRef<THREE.LineSegments>(null);
   const octaRef = useRef<THREE.LineSegments>(null);
   const ringsRef = useRef<THREE.Group>(null);
+  const smoothScroll = useRef(0);
   const smoothMx = useRef(0);
   const smoothMy = useRef(0);
+  const initialized = useRef(false);
 
   const coreGeo = useMemo(() => new THREE.TetrahedronGeometry(2, 0), []);
   const shellEdges = useMemo(() => new THREE.EdgesGeometry(new THREE.TetrahedronGeometry(2.1, 0)), []);
@@ -24,23 +26,21 @@ export function HeroObject({ reducedMotion = false }: { reducedMotion?: boolean 
     if (!groupRef.current || reducedMotion) return;
 
     const t = state.clock.elapsedTime;
-    const scroll = scrollStore.progress;
+    const rawScroll = scrollStore.progress;
+
+    if (!initialized.current) {
+      smoothScroll.current = rawScroll;
+      initialized.current = true;
+    }
+    smoothScroll.current += (rawScroll - smoothScroll.current) * 0.03;
+    const scroll = smoothScroll.current;
 
     smoothMx.current += (scrollStore.mouseX - smoothMx.current) * 0.04;
     smoothMy.current += (scrollStore.mouseY - smoothMy.current) * 0.04;
     const mx = smoothMx.current;
     const my = smoothMy.current;
 
-    // --- Scroll-phase morphing ---
-    // 0.0-0.15  Hero:     pristine tetra, slow spin
-    // 0.15-0.35 Problem:  opens up, outer expands
-    // 0.35-0.55 Briefing: icosa wireframe fades in, tilts
-    // 0.55-0.75 Banks:    octa wireframe appears, complex
-    // 0.75-0.90 Security: solidifies, low spin, stable
-    // 0.90-1.0  CTA:      peak glow, all layers, dramatic
-
     const phase = scroll;
-    const heroFade = 1 - smoothstep(phase, 0.0, 0.15);
     const openAmount = smoothstep(phase, 0.12, 0.35);
     const icoFade = bell(phase, 0.35, 0.55, 0.12);
     const octaFade = bell(phase, 0.55, 0.80, 0.12);
@@ -53,7 +53,7 @@ export function HeroObject({ reducedMotion = false }: { reducedMotion?: boolean 
     groupRef.current.rotation.x = Math.sin(t * 0.06) * 0.12 + scroll * 0.25 + my * 0.15;
     groupRef.current.rotation.z = Math.cos(t * 0.08) * 0.06 + mx * my * 0.05;
 
-    const coreScale = 1 + heroFade * 0.05 - openAmount * 0.1 + solidify * 0.08 + ctaGlow * 0.12;
+    const coreScale = 1 - openAmount * 0.1 + solidify * 0.08 + ctaGlow * 0.12;
     groupRef.current.children[0]?.scale.setScalar(coreScale);
 
     if (coreRef.current) {
@@ -74,14 +74,14 @@ export function HeroObject({ reducedMotion = false }: { reducedMotion?: boolean 
       const expand = 1 + openAmount * 0.35 + Math.sin(t * 0.15) * 0.04 + ctaGlow * 0.15;
       outerRef.current.scale.setScalar(expand);
       const mat = outerRef.current.material as THREE.LineBasicMaterial;
-      mat.opacity = 0.1 + openAmount * 0.12 + ctaGlow * 0.1;
+      mat.opacity = 0.08 + openAmount * 0.1 + ctaGlow * 0.1;
     }
 
     if (icoRef.current) {
       icoRef.current.rotation.y = t * 0.04 - mx * 0.05;
       icoRef.current.rotation.x = t * 0.03 + my * 0.05;
       const mat = icoRef.current.material as THREE.LineBasicMaterial;
-      mat.opacity = icoFade * 0.2;
+      mat.opacity = icoFade * 0.15;
       icoRef.current.scale.setScalar(1 + icoFade * 0.1);
     }
 
@@ -89,7 +89,7 @@ export function HeroObject({ reducedMotion = false }: { reducedMotion?: boolean 
       octaRef.current.rotation.y = -t * 0.035 + mx * 0.08;
       octaRef.current.rotation.z = t * 0.025;
       const mat = octaRef.current.material as THREE.LineBasicMaterial;
-      mat.opacity = octaFade * 0.15;
+      mat.opacity = octaFade * 0.12;
       octaRef.current.scale.setScalar(1 + octaFade * 0.08);
     }
 
@@ -117,7 +117,7 @@ export function HeroObject({ reducedMotion = false }: { reducedMotion?: boolean 
       </lineSegments>
 
       <lineSegments ref={outerRef} geometry={outerEdges}>
-        <lineBasicMaterial color="#CA8A04" transparent opacity={0.1} />
+        <lineBasicMaterial color="#CA8A04" transparent opacity={0.08} />
       </lineSegments>
 
       <lineSegments ref={icoRef} geometry={icoEdges}>
@@ -152,9 +152,9 @@ const OrbitalRings = forwardRef<THREE.Group>(function OrbitalRings(_, ref) {
 
   const rings = useMemo(
     () => [
-      { radius: 4, rotation: [0.3, 0, 0.8] as [number, number, number], opacity: 0.07, speed: 1 },
-      { radius: 5.5, rotation: [1.2, 0.5, 0.2] as [number, number, number], opacity: 0.05, speed: -0.7 },
-      { radius: 7, rotation: [0.7, 1.0, 0.4] as [number, number, number], opacity: 0.035, speed: 0.5 },
+      { radius: 4, rotation: [0.3, 0, 0.8] as [number, number, number], opacity: 0.035, speed: 1 },
+      { radius: 5.5, rotation: [1.2, 0.5, 0.2] as [number, number, number], opacity: 0.025, speed: -0.7 },
+      { radius: 7, rotation: [0.7, 1.0, 0.4] as [number, number, number], opacity: 0.018, speed: 0.5 },
     ],
     [],
   );
@@ -163,9 +163,12 @@ const OrbitalRings = forwardRef<THREE.Group>(function OrbitalRings(_, ref) {
     if (!innerRef.current) return;
     const children = innerRef.current.children;
     const t = state.clock.elapsedTime;
+    const scroll = scrollStore.progress;
     const mx = scrollStore.mouseX;
     for (let i = 0; i < children.length; i++) {
       children[i].rotation.z = t * 0.03 * rings[i].speed + mx * 0.03;
+      const mat = (children[i] as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      mat.opacity = rings[i].opacity + scroll * 0.02;
     }
   });
 
@@ -214,15 +217,21 @@ function VertexBeams() {
   useFrame((state) => {
     if (!ref.current) return;
     const t = state.clock.elapsedTime;
+    const scroll = scrollStore.progress;
     ref.current.rotation.y = t * 0.1 + scrollStore.mouseX * 0.05;
     ref.current.rotation.x = Math.sin(t * 0.03) * 0.05 + scrollStore.mouseY * 0.03;
+    const children = ref.current.children;
+    for (let i = 0; i < children.length; i++) {
+      const mat = (children[i] as THREE.LineSegments).material as THREE.LineBasicMaterial;
+      mat.opacity = 0.015 + scroll * 0.02;
+    }
   });
 
   return (
     <group ref={ref}>
       {lines.map((geo, i) => (
         <lineSegments key={i} geometry={geo}>
-          <lineBasicMaterial color="#CA8A04" transparent opacity={0.04} />
+          <lineBasicMaterial color="#CA8A04" transparent opacity={0.015} />
         </lineSegments>
       ))}
     </group>

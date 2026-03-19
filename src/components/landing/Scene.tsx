@@ -15,13 +15,22 @@ interface SceneProps {
 }
 
 export function Scene({ reducedMotion = false, mobile = false }: SceneProps) {
+  const fogRef = useRef<THREE.Fog>(null);
+
+  useFrame(() => {
+    if (!fogRef.current) return;
+    const s = scrollStore.progress;
+    fogRef.current.near = 14 - s * 4;
+    fogRef.current.far = 55 - s * 15;
+  });
+
   return (
     <>
       <CameraRig reducedMotion={reducedMotion} />
-      <fog attach="fog" args={['#030305', 14, 55]} />
+      <fog ref={fogRef} attach="fog" args={['#030305', 14, 55]} />
       <Lights />
       <DriftingStars mobile={mobile} reducedMotion={reducedMotion} />
-      <Particles count={mobile ? 250 : 700} reducedMotion={reducedMotion} />
+      <Particles count={mobile ? 150 : 400} reducedMotion={reducedMotion} />
       <HeroObject reducedMotion={reducedMotion} />
       {!mobile && <GroundGrid />}
       <PostEffects reducedMotion={reducedMotion} mobile={mobile} />
@@ -36,23 +45,24 @@ function DriftingStars({ mobile, reducedMotion }: { mobile: boolean; reducedMoti
 
   useFrame((_, dt) => {
     if (!ref.current || reducedMotion) return;
+    const scroll = scrollStore.progress;
     smoothMx.current += (scrollStore.mouseX - smoothMx.current) * 0.01;
     smoothMy.current += (scrollStore.mouseY - smoothMy.current) * 0.01;
 
-    ref.current.rotation.y += dt * 0.003 + smoothMx.current * dt * 0.02;
-    ref.current.rotation.x += dt * 0.001 + smoothMy.current * dt * 0.01;
+    ref.current.rotation.y += dt * (0.002 + scroll * 0.004) + smoothMx.current * dt * 0.015;
+    ref.current.rotation.x += dt * (0.0008 + scroll * 0.002) + smoothMy.current * dt * 0.008;
   });
 
   return (
     <group ref={ref}>
       <Stars
-        radius={65}
-        depth={90}
-        count={mobile ? 600 : 1800}
-        factor={2.2}
+        radius={80}
+        depth={100}
+        count={mobile ? 400 : 1000}
+        factor={1.4}
         saturation={0}
         fade
-        speed={reducedMotion ? 0 : 0.6}
+        speed={reducedMotion ? 0 : 0.3}
       />
     </group>
   );
@@ -69,10 +79,11 @@ function GroundGrid() {
 
   useFrame((state) => {
     if (!ref.current) return;
+    const scroll = scrollStore.progress;
     smoothMx.current += (scrollStore.mouseX - smoothMx.current) * 0.02;
     const mat = ref.current.material as THREE.Material;
-    mat.opacity = 0.025 + scrollStore.progress * 0.02
-      + Math.sin(state.clock.elapsedTime * 0.3) * 0.005;
+    mat.opacity = 0.01 + scroll * 0.025
+      + Math.sin(state.clock.elapsedTime * 0.3) * 0.003;
     ref.current.rotation.y = smoothMx.current * 0.05;
   });
 
@@ -82,7 +93,7 @@ function GroundGrid() {
       args={gridArgs}
       position={[0, -4, 0]}
       material-transparent
-      material-opacity={0.025}
+      material-opacity={0.01}
       material-depthWrite={false}
     />
   );

@@ -8,7 +8,7 @@ interface ParticlesProps {
   reducedMotion?: boolean;
 }
 
-export function Particles({ count = 700, reducedMotion = false }: ParticlesProps) {
+export function Particles({ count = 400, reducedMotion = false }: ParticlesProps) {
   const orbitalRef = useRef<THREE.Points>(null);
   const ambientRef = useRef<THREE.Points>(null);
   const driftRef = useRef<THREE.Points>(null);
@@ -67,23 +67,27 @@ export function Particles({ count = 700, reducedMotion = false }: ParticlesProps
     const my = smoothMy.current;
 
     if (orbitalRef.current) {
-      orbitalRef.current.rotation.y += dt * (0.025 + scroll * 0.03);
+      orbitalRef.current.rotation.y += dt * (0.02 + scroll * 0.04);
       orbitalRef.current.rotation.x = Math.sin(t * 0.03) * 0.08 + my * 0.08;
       orbitalRef.current.rotation.z = Math.cos(t * 0.02) * 0.04 + mx * 0.06;
+      const mat = orbitalRef.current.material as THREE.PointsMaterial;
+      mat.opacity = 0.08 + scroll * 0.12;
     }
 
     if (ambientRef.current) {
-      ambientRef.current.rotation.y += dt * 0.006;
-      ambientRef.current.rotation.x += dt * 0.002;
+      ambientRef.current.rotation.y += dt * (0.004 + scroll * 0.003);
+      ambientRef.current.rotation.x += dt * 0.001;
       ambientRef.current.position.x = mx * 0.5;
       ambientRef.current.position.y = my * 0.3;
     }
 
     if (driftRef.current) {
-      driftRef.current.rotation.y -= dt * 0.01;
-      driftRef.current.rotation.z += dt * 0.004;
+      driftRef.current.rotation.y -= dt * (0.008 + scroll * 0.006);
+      driftRef.current.rotation.z += dt * 0.003;
       driftRef.current.position.x = mx * 0.3;
       driftRef.current.position.y = my * 0.2;
+      const mat = driftRef.current.material as THREE.PointsMaterial;
+      mat.opacity = 0.04 + scroll * 0.06;
     }
   });
 
@@ -94,10 +98,10 @@ export function Particles({ count = 700, reducedMotion = false }: ParticlesProps
           <bufferAttribute attach="attributes-position" args={[orbitalPositions, 3]} />
         </bufferGeometry>
         <pointsMaterial
-          size={0.04}
+          size={0.035}
           color="#d4a853"
           transparent
-          opacity={0.4}
+          opacity={0.08}
           sizeAttenuation
           depthWrite={false}
         />
@@ -108,10 +112,10 @@ export function Particles({ count = 700, reducedMotion = false }: ParticlesProps
           <bufferAttribute attach="attributes-position" args={[ambientPositions, 3]} />
         </bufferGeometry>
         <pointsMaterial
-          size={0.02}
+          size={0.015}
           color="#ffffff"
           transparent
-          opacity={0.1}
+          opacity={0.04}
           sizeAttenuation
           depthWrite={false}
         />
@@ -122,10 +126,10 @@ export function Particles({ count = 700, reducedMotion = false }: ParticlesProps
           <bufferAttribute attach="attributes-position" args={[driftPositions, 3]} />
         </bufferGeometry>
         <pointsMaterial
-          size={0.03}
+          size={0.025}
           color="#CA8A04"
           transparent
-          opacity={0.15}
+          opacity={0.04}
           sizeAttenuation
           depthWrite={false}
         />

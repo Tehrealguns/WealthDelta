@@ -31,12 +31,12 @@ export function PostEffects({ reducedMotion = false, mobile = false }: PostEffec
 
   return (
     <EffectComposer multisampling={4}>
-      <Bloom
-        luminanceThreshold={0.3}
-        luminanceSmoothing={0.5}
-        intensity={1.4}
-        mipmapBlur
-      />
+        <Bloom
+          luminanceThreshold={0.4}
+          luminanceSmoothing={0.5}
+          intensity={1.0}
+          mipmapBlur
+        />
       <Vignette offset={0.3} darkness={0.75} />
       <Noise
         premultiply
