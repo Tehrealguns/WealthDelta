@@ -222,7 +222,8 @@ ${holdings.map((h) => {
   const e = enriched.find((x) => x.asset_id === h.asset_id);
   const qty = h.quantity != null ? ` | ${h.quantity} units` : '';
   const live = e?.live_value != null ? ` | Live: ${formatCurrency(e.live_value)}` : '';
-  return `  ${h.asset_name} (${h.source}, ${h.asset_class}): ${formatCurrency(h.valuation_base)}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}`;
+  const ccy = h.currency && h.currency !== 'AUD' ? ` (${h.currency})` : '';
+  return `  ${h.asset_name} (${h.source}, ${h.asset_class}): ${formatCurrency(h.valuation_base)}${ccy}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}`;
 }).join('\n')}
 ${marketContext}
 ${benchmarkContext}

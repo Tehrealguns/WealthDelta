@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { maskPII } from '@/lib/pii-masker';
-import { formatCurrency } from '@/lib/decimal';
+import { toDecimal, formatCurrency } from '@/lib/decimal';
 import { enrichHoldings, buildMarketContext, fetchBenchmarks } from '@/lib/market-data';
-import type { HoldingRow, DailySnapshotRow } from '@/lib/types';
+import type { HoldingRow, SnapshotBreakdown, Source, AssetClass } from '@/lib/types';
 
 const BRIEFING_SYSTEM = `You are a private wealth advisor writing a concise daily briefing for an ultra-high-net-worth individual. Write in a professional but conversational tone.
 
@@ -54,46 +54,95 @@ export async function POST(request: NextRequest) {
     .select('*')
     .eq('user_id', userId) as { data: HoldingRow[] | null };
 
-  const { data: snapshots } = await supabase
-    .from('daily_snapshots')
-    .select('*')
-    .eq('user_id', userId)
-    .order('snapshot_date', { ascending: false })
-    .limit(2) as { data: DailySnapshotRow[] | null };
-
-  if (!holdings?.length || !snapshots?.length) {
+  if (!holdings?.length) {
     return NextResponse.json(
-      { error: 'No data available', details: 'Generate a snapshot first' },
+      { error: 'No data available', details: 'Upload holdings first' },
       { status: 404 },
     );
   }
 
-  const currentSnapshot = snapshots[0];
-  const prevSnapshot = snapshots[1] ?? null;
+  const today = new Date().toISOString().split('T')[0];
 
   const enriched = await enrichHoldings(holdings);
+
+  let totalValue = toDecimal(0);
+  const bySource: Record<string, ReturnType<typeof toDecimal>> = {};
+  const byClass: Record<string, ReturnType<typeof toDecimal>> = {};
+
+  for (let i = 0; i < holdings.length; i++) {
+    const h = holdings[i];
+    const e = enriched[i];
+    const val = toDecimal(e.live_value ?? h.valuation_base);
+    totalValue = totalValue.plus(val);
+    bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);
+    byClass[h.asset_class] = (byClass[h.asset_class] ?? toDecimal(0)).plus(val);
+  }
+
+  const breakdown: SnapshotBreakdown = {
+    by_source: Object.fromEntries(
+      Object.entries(bySource).map(([k, v]) => [k, v.toNumber()]),
+    ) as Record<Source, number>,
+    by_class: Object.fromEntries(
+      Object.entries(byClass).map(([k, v]) => [k, v.toNumber()]),
+    ) as Record<AssetClass, number>,
+  };
+
+  const { data: prevSnapshot } = await supabase
+    .from('daily_snapshots')
+    .select('total_value, snapshot_date')
+    .eq('user_id', userId)
+    .lt('snapshot_date', today)
+    .order('snapshot_date', { ascending: false })
+    .limit(1)
+    .single();
+
+  let deltaValue: number | null = null;
+  let deltaPct: number | null = null;
+
+  if (prevSnapshot) {
+    const prevVal = toDecimal(prevSnapshot.total_value);
+    deltaValue = totalValue.minus(prevVal).toNumber();
+    deltaPct = prevVal.isZero()
+      ? null
+      : totalValue.minus(prevVal).div(prevVal).times(100).toDecimalPlaces(4).toNumber();
+  }
+
+  await supabase.from('daily_snapshots').upsert(
+    {
+      user_id: userId,
+      snapshot_date: today,
+      total_value: totalValue.toNumber(),
+      delta_value: deltaValue,
+      delta_pct: deltaPct,
+      breakdown_json: breakdown,
+    },
+    { onConflict: 'user_id,snapshot_date' },
+  );
+
   const marketContext = buildMarketContext(enriched);
+  const benchmarkContext = await fetchBenchmarks(userSettings?.watch_items || '');
 
   const portfolioContext = `
-CURRENT PORTFOLIO (${currentSnapshot.snapshot_date}):
-Total Value: ${formatCurrency(currentSnapshot.total_value)}
-${currentSnapshot.delta_value != null ? `Daily Change: ${formatCurrency(currentSnapshot.delta_value)} (${currentSnapshot.delta_pct?.toFixed(2)}%)` : 'No previous snapshot for comparison.'}
+CURRENT PORTFOLIO (${today}):
+Total Value: ${formatCurrency(totalValue.toNumber())}
+${deltaValue != null ? `Daily Change: ${formatCurrency(deltaValue)} (${deltaPct?.toFixed(2)}%)` : 'No previous snapshot for comparison.'}
 
 BREAKDOWN BY SOURCE:
-${currentSnapshot.breakdown_json ? Object.entries(currentSnapshot.breakdown_json.by_source).map(([s, v]) => `  ${s}: ${formatCurrency(v as number)}`).join('\n') : 'N/A'}
+${Object.entries(breakdown.by_source).map(([s, v]) => `  ${s}: ${formatCurrency(v)}`).join('\n')}
 
 BREAKDOWN BY ASSET CLASS:
-${currentSnapshot.breakdown_json ? Object.entries(currentSnapshot.breakdown_json.by_class).map(([c, v]) => `  ${c}: ${formatCurrency(v as number)}`).join('\n') : 'N/A'}
+${Object.entries(breakdown.by_class).map(([c, v]) => `  ${c}: ${formatCurrency(v)}`).join('\n')}
 
 HOLDINGS:
 ${holdings.map((h) => {
   const e = enriched.find((x) => x.asset_id === h.asset_id);
   const qty = h.quantity != null ? ` | ${h.quantity} units` : '';
   const live = e?.live_value != null ? ` | Live: ${formatCurrency(e.live_value)}` : '';
-  return `  ${h.asset_name} (${h.source}, ${h.asset_class}): ${formatCurrency(h.valuation_base)}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}`;
+  const ccy = h.currency && h.currency !== 'AUD' ? ` (${h.currency})` : '';
+  return `  ${h.asset_name} (${h.source}, ${h.asset_class}): ${formatCurrency(h.valuation_base)}${ccy}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}`;
 }).join('\n')}
 ${marketContext}
-${await fetchBenchmarks(userSettings?.watch_items || '')}
+${benchmarkContext}
 ${prevSnapshot ? `\nPREVIOUS SNAPSHOT (${prevSnapshot.snapshot_date}):\nTotal: ${formatCurrency(prevSnapshot.total_value)}` : ''}
 `;
 
@@ -129,8 +178,6 @@ ${prevSnapshot ? `\nPREVIOUS SNAPSHOT (${prevSnapshot.snapshot_date}):\nTotal: $
     .filter((b) => b.type === 'text')
     .map((b) => ('text' in b ? b.text : ''))
     .join('');
-
-  const today = new Date().toISOString().split('T')[0];
 
   const { data: briefing, error: bErr } = await supabase
     .from('briefings')
