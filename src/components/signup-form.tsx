@@ -54,7 +54,7 @@ export function SignupForm() {
 
   if (sent) {
     return (
-      <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+      <Card className="border-white/10 bg-white/[0.06] backdrop-blur-2xl">
         <CardContent className="pt-8 pb-8 text-center space-y-4">
           <div className="mx-auto w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center">
             <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -62,7 +62,7 @@ export function SignupForm() {
             </svg>
           </div>
           <h2 className="text-lg font-semibold text-white">Check your email</h2>
-          <p className="text-sm text-white/40 max-w-xs mx-auto">
+          <p className="text-sm text-white/50 max-w-xs mx-auto">
             We sent a confirmation link to <span className="text-white/60">{email}</span>. Click it to activate your account.
           </p>
           <Button
@@ -79,11 +79,11 @@ export function SignupForm() {
   }
 
   return (
-    <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+    <Card className="border-white/10 bg-white/[0.06] backdrop-blur-2xl">
       <CardContent className="pt-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label htmlFor="email" className="text-sm text-white/50">
+            <label htmlFor="email" className="text-sm text-white/60">
               Email
             </label>
             <Input
@@ -93,11 +93,11 @@ export function SignupForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="border-white/[0.06] bg-white/[0.03] text-white placeholder:text-white/20 focus:border-white/20"
+              className="border-white/10 bg-white/[0.08] text-white placeholder:text-white/30 focus:border-white/25"
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="password" className="text-sm text-white/50">
+            <label htmlFor="password" className="text-sm text-white/60">
               Password
             </label>
             <Input
@@ -108,11 +108,11 @@ export function SignupForm() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="border-white/[0.06] bg-white/[0.03] text-white placeholder:text-white/20 focus:border-white/20"
+              className="border-white/10 bg-white/[0.08] text-white placeholder:text-white/30 focus:border-white/25"
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="confirm-password" className="text-sm text-white/50">
+            <label htmlFor="confirm-password" className="text-sm text-white/60">
               Confirm Password
             </label>
             <Input
@@ -123,7 +123,7 @@ export function SignupForm() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               minLength={6}
-              className="border-white/[0.06] bg-white/[0.03] text-white placeholder:text-white/20 focus:border-white/20"
+              className="border-white/10 bg-white/[0.08] text-white placeholder:text-white/30 focus:border-white/25"
             />
           </div>
           <Button
@@ -142,7 +142,7 @@ export function SignupForm() {
           </Button>
         </form>
         <div className="mt-5 text-center">
-          <p className="text-sm text-white/30">
+          <p className="text-sm text-white/40">
             Already have an account?{' '}
             <Link
               href="/login"

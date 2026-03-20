@@ -285,20 +285,20 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
       <div className="flex items-center justify-center gap-2">
         {['Portfolios', 'Preferences'].map((label, i) => (
           <div key={label} className="flex items-center gap-2">
-            {i > 0 && <div className="h-px w-8 bg-white/[0.06]" />}
+            {i > 0 && <div className="h-px w-8 bg-white/[0.12]" />}
             <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs transition-colors ${
               step === i
-                ? 'bg-white/[0.08] text-white/70'
+                ? 'bg-white/[0.10] text-white/80'
                 : step > i
-                  ? 'text-white/30'
-                  : 'text-white/15'
+                  ? 'text-white/45'
+                  : 'text-white/25'
             }`}>
               <span className={`flex size-5 items-center justify-center rounded-full text-[10px] font-medium ${
                 step > i
                   ? 'bg-emerald-500/20 text-emerald-400'
                   : step === i
-                    ? 'bg-white/10 text-white/60'
-                    : 'bg-white/[0.04] text-white/20'
+                    ? 'bg-white/15 text-white/70'
+                    : 'bg-white/[0.06] text-white/30'
               }`}>
                 {step > i ? '✓' : i + 1}
               </span>
@@ -314,10 +314,10 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
             <h1 className="text-3xl font-semibold tracking-tight text-white">
               Organize your wealth
             </h1>
-            <p className="text-white/30 text-sm max-w-md mx-auto">
+            <p className="text-white/45 text-sm max-w-md mx-auto">
               Add each bank, platform, or custodian as a portfolio. Upload their statements and we&apos;ll extract everything.
             </p>
-            <p className="text-white/15 text-xs">{userEmail}</p>
+            <p className="text-white/30 text-xs">{userEmail}</p>
           </div>
 
           <div className="space-y-4">
@@ -338,7 +338,7 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
 
           <button
             onClick={addPortfolio}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/[0.08] py-4 text-sm text-white/25 transition-colors hover:border-white/15 hover:text-white/40 hover:bg-white/[0.02]"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/[0.12] py-4 text-sm text-white/40 transition-colors hover:border-white/20 hover:text-white/55 hover:bg-white/[0.03]"
           >
             <Plus className="size-4" />
             Add another portfolio
@@ -381,19 +381,19 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
             <h1 className="text-3xl font-semibold tracking-tight text-white">
               Personalize your briefings
             </h1>
-            <p className="text-white/30 text-sm">
+            <p className="text-white/45 text-sm">
               Tell us what matters most so Claude can tailor your daily executive summary.
             </p>
           </div>
 
           {/* Focus Areas */}
-          <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+          <Card className="border-white/10 bg-white/[0.06] backdrop-blur-2xl">
             <CardContent className="pt-6 space-y-4">
               <div>
-                <h2 className="text-sm font-medium text-white/60 mb-1">
+                <h2 className="text-sm font-medium text-white/70 mb-1">
                   What should your briefing focus on?
                 </h2>
-                <p className="text-xs text-white/20">Select all that apply.</p>
+                <p className="text-xs text-white/35">Select all that apply.</p>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {FOCUS_AREAS.map((area) => {
@@ -411,15 +411,15 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
                       }
                       className={`flex flex-col items-start rounded-xl border p-4 text-left transition-all ${
                         selected
-                          ? 'border-white/20 bg-white/[0.06]'
-                          : 'border-white/[0.06] hover:border-white/10 hover:bg-white/[0.02]'
+                          ? 'border-white/25 bg-white/[0.10]'
+                          : 'border-white/[0.08] hover:border-white/15 hover:bg-white/[0.04]'
                       }`}
                     >
-                      <Icon className={`size-4 mb-2 ${selected ? 'text-white/70' : 'text-white/20'}`} />
-                      <span className={`text-sm font-medium ${selected ? 'text-white/80' : 'text-white/40'}`}>
+                      <Icon className={`size-4 mb-2 ${selected ? 'text-white/80' : 'text-white/35'}`} />
+                      <span className={`text-sm font-medium ${selected ? 'text-white/90' : 'text-white/50'}`}>
                         {area.label}
                       </span>
-                      <span className="text-xs text-white/15 mt-0.5">{area.description}</span>
+                      <span className="text-xs text-white/30 mt-0.5">{area.description}</span>
                     </button>
                   );
                 })}
@@ -428,47 +428,47 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
           </Card>
 
           {/* Custom Instructions */}
-          <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+          <Card className="border-white/10 bg-white/[0.06] backdrop-blur-2xl">
             <CardContent className="pt-6 space-y-4">
               <div>
-                <h2 className="text-sm font-medium text-white/60 mb-1">Additional instructions</h2>
-                <p className="text-xs text-white/20">Anything specific about how you want your briefing.</p>
+                <h2 className="text-sm font-medium text-white/70 mb-1">Additional instructions</h2>
+                <p className="text-xs text-white/35">Anything specific about how you want your briefing.</p>
               </div>
               <textarea
                 value={customInstructions}
                 onChange={(e) => setCustomInstructions(e.target.value)}
                 placeholder="e.g. Compare performance against ASX200, highlight positions above 10% concentration..."
                 rows={3}
-                className="w-full rounded-xl bg-white/[0.02] border border-white/[0.06] px-4 py-3 text-sm text-white/60 placeholder:text-white/15 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
+                className="w-full rounded-xl bg-white/[0.08] border border-white/10 px-4 py-3 text-sm text-white/70 placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-white/20 resize-none"
               />
             </CardContent>
           </Card>
 
           {/* Watch Items */}
-          <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+          <Card className="border-white/10 bg-white/[0.06] backdrop-blur-2xl">
             <CardContent className="pt-6 space-y-4">
               <div>
-                <h2 className="text-sm font-medium text-white/60 mb-1">Positions to watch</h2>
-                <p className="text-xs text-white/20">Flagged in every briefing.</p>
+                <h2 className="text-sm font-medium text-white/70 mb-1">Positions to watch</h2>
+                <p className="text-xs text-white/35">Flagged in every briefing.</p>
               </div>
               <textarea
                 value={watchItems}
                 onChange={(e) => setWatchItems(e.target.value)}
                 placeholder="e.g. BHP nearing stop-loss at $38, monitor USD/AUD if it breaks 0.65..."
                 rows={3}
-                className="w-full rounded-xl bg-white/[0.02] border border-white/[0.06] px-4 py-3 text-sm text-white/60 placeholder:text-white/15 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
+                className="w-full rounded-xl bg-white/[0.08] border border-white/10 px-4 py-3 text-sm text-white/70 placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-white/20 resize-none"
               />
             </CardContent>
           </Card>
 
           {/* Delivery Time */}
-          <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+          <Card className="border-white/10 bg-white/[0.06] backdrop-blur-2xl">
             <CardContent className="pt-6 space-y-4">
               <div className="flex items-center gap-3">
-                <Clock className="size-4 text-white/20" />
+                <Clock className="size-4 text-white/35" />
                 <div>
-                  <h2 className="text-sm font-medium text-white/60">Briefing delivery time</h2>
-                  <p className="text-xs text-white/20 mt-0.5">Daily executive summary emailed at this time (AEST)</p>
+                  <h2 className="text-sm font-medium text-white/70">Briefing delivery time</h2>
+                  <p className="text-xs text-white/35 mt-0.5">Daily executive summary emailed at this time (AEST)</p>
                 </div>
               </div>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
@@ -482,8 +482,8 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
                       onClick={() => setEmailTime(t.value)}
                       className={`rounded-xl border px-2 py-2.5 text-center transition-all ${
                         selected
-                          ? 'border-white/20 bg-white/[0.08] text-white/80'
-                          : 'border-white/[0.04] text-white/25 hover:border-white/10 hover:text-white/40 hover:bg-white/[0.02]'
+                          ? 'border-white/25 bg-white/[0.12] text-white/90'
+                          : 'border-white/[0.08] text-white/35 hover:border-white/15 hover:text-white/50 hover:bg-white/[0.04]'
                       }`}
                     >
                       <span className="text-sm font-medium block">{t.label}</span>
@@ -496,14 +496,14 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
           </Card>
 
           {/* PDF Toggle */}
-          <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+          <Card className="border-white/10 bg-white/[0.06] backdrop-blur-2xl">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <FileText className="size-4 text-white/20" />
+                  <FileText className="size-4 text-white/35" />
                   <div>
-                    <p className="text-sm text-white/50">Attach research PDF</p>
-                    <p className="text-xs text-white/15 mt-0.5">Deep-dive analysis as a PDF attachment</p>
+                    <p className="text-sm text-white/60">Attach research PDF</p>
+                    <p className="text-xs text-white/30 mt-0.5">Deep-dive analysis as a PDF attachment</p>
                   </div>
                 </div>
                 <button
@@ -525,7 +525,7 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
             <Button
               onClick={() => setStep(0)}
               variant="ghost"
-              className="border border-white/[0.06] text-white/30 hover:text-white hover:bg-white/5 h-12 px-6"
+              className="border border-white/10 text-white/45 hover:text-white hover:bg-white/5 h-12 px-6"
             >
               <ArrowLeft className="size-4 mr-2" />
               Back
@@ -533,7 +533,7 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
             <Button
               onClick={() => router.push('/dashboard')}
               variant="ghost"
-              className="flex-1 border border-white/[0.06] text-white/30 hover:text-white hover:bg-white/5 h-12"
+              className="flex-1 border border-white/10 text-white/45 hover:text-white hover:bg-white/5 h-12"
             >
               Skip for now
             </Button>
@@ -586,19 +586,19 @@ function PortfolioCard({
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+    <Card className="border-white/10 bg-white/[0.06] backdrop-blur-2xl">
       <CardContent className="pt-6 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Briefcase className="size-4 text-white/20" />
-            <span className="text-xs font-medium text-white/30 uppercase tracking-wider">
+            <Briefcase className="size-4 text-white/40" />
+            <span className="text-xs font-medium text-white/45 uppercase tracking-wider">
               Portfolio {index + 1}
             </span>
           </div>
           {canRemove && (
             <button
               onClick={() => onRemove(portfolio.id)}
-              className="text-white/15 hover:text-red-400/60 transition-colors"
+              className="text-white/30 hover:text-red-400/70 transition-colors"
             >
               <Trash2 className="size-4" />
             </button>
@@ -610,14 +610,14 @@ function PortfolioCard({
             placeholder="e.g. UBS Private Banking, Macquarie Wrap, Family Trust"
             value={portfolio.name}
             onChange={(e) => onUpdate(portfolio.id, 'name', e.target.value)}
-            className="border-white/[0.06] bg-white/[0.03] text-white placeholder:text-white/15 focus:border-white/15 h-11"
+            className="border-white/10 bg-white/[0.08] text-white placeholder:text-white/30 focus:border-white/25 h-11"
           />
           <textarea
             placeholder="Optional description — e.g. Australian equities and fixed income, managed by John Smith"
             value={portfolio.description}
             onChange={(e) => onUpdate(portfolio.id, 'description', e.target.value)}
             rows={2}
-            className="w-full rounded-xl bg-white/[0.02] border border-white/[0.06] px-4 py-3 text-sm text-white/60 placeholder:text-white/15 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
+            className="w-full rounded-xl bg-white/[0.08] border border-white/10 px-4 py-3 text-sm text-white/70 placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-white/20 resize-none"
           />
         </div>
 
@@ -632,12 +632,12 @@ function PortfolioCard({
           }}
           className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-all ${
             dragOver
-              ? 'border-white/20 bg-white/[0.03]'
-              : 'border-white/[0.06] hover:border-white/10'
+              ? 'border-white/25 bg-white/[0.05]'
+              : 'border-white/[0.10] hover:border-white/15'
           }`}
         >
-          <Upload className="size-6 text-white/10 mb-3" />
-          <p className="text-xs text-white/25 mb-3">
+          <Upload className="size-6 text-white/20 mb-3" />
+          <p className="text-xs text-white/40 mb-3">
             Drop PDF statements for this portfolio
           </p>
           <label>
@@ -652,7 +652,7 @@ function PortfolioCard({
               }}
               className="hidden"
             />
-            <span className="inline-flex items-center rounded-md border border-white/[0.08] px-3 py-1.5 text-xs font-medium text-white/30 hover:text-white/50 hover:bg-white/5 cursor-pointer transition-colors">
+            <span className="inline-flex items-center rounded-md border border-white/[0.12] px-3 py-1.5 text-xs font-medium text-white/45 hover:text-white/60 hover:bg-white/5 cursor-pointer transition-colors">
               <FileUp className="size-3 mr-1.5" /> Browse
             </span>
           </label>
@@ -664,14 +664,14 @@ function PortfolioCard({
             {portfolio.files.map((f, i) => (
               <div
                 key={`${f.file.name}-${i}`}
-                className="flex items-center gap-2 rounded-lg border border-white/[0.04] bg-white/[0.015] px-3 py-2"
+                className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-white/50 truncate">
+                  <p className="text-xs text-white/60 truncate">
                     {f.file.name}
-                    <span className="ml-1.5 text-white/15">{formatFileSize(f.file.size)}</span>
+                    <span className="ml-1.5 text-white/30">{formatFileSize(f.file.size)}</span>
                   </p>
-                  <p className="text-[11px] text-white/20">
+                  <p className="text-[11px] text-white/35">
                     {f.status === 'pending' && 'Ready'}
                     {f.status === 'uploading' && 'Extracting with AI...'}
                     {f.status === 'done' && `${f.count} holdings extracted`}
@@ -682,7 +682,7 @@ function PortfolioCard({
                   {f.status === 'pending' && !processing && (
                     <button
                       onClick={() => onRemoveFile(portfolio.id, i)}
-                      className="text-white/15 hover:text-white/40 transition-colors"
+                      className="text-white/30 hover:text-white/50 transition-colors"
                     >
                       <X className="size-3.5" />
                     </button>

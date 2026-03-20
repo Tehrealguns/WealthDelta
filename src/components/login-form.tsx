@@ -43,11 +43,11 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+    <Card className="border-white/10 bg-white/[0.06] backdrop-blur-2xl">
       <CardContent className="pt-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label htmlFor="email" className="text-sm text-white/50">
+            <label htmlFor="email" className="text-sm text-white/60">
               Email
             </label>
             <Input
@@ -57,11 +57,11 @@ export function LoginForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="border-white/[0.06] bg-white/[0.03] text-white placeholder:text-white/20 focus:border-white/20"
+              className="border-white/10 bg-white/[0.08] text-white placeholder:text-white/30 focus:border-white/25"
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="password" className="text-sm text-white/50">
+            <label htmlFor="password" className="text-sm text-white/60">
               Password
             </label>
             <Input
@@ -72,7 +72,7 @@ export function LoginForm() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="border-white/[0.06] bg-white/[0.03] text-white placeholder:text-white/20 focus:border-white/20"
+              className="border-white/10 bg-white/[0.08] text-white placeholder:text-white/30 focus:border-white/25"
             />
           </div>
           <Button
@@ -91,7 +91,7 @@ export function LoginForm() {
           </Button>
         </form>
         <div className="mt-5 text-center">
-          <p className="text-sm text-white/30">
+          <p className="text-sm text-white/40">
             Don&apos;t have an account?{' '}
             <Link
               href="/signup"
