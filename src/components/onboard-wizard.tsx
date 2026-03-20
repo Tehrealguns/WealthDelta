@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,7 @@ import { toast } from 'sonner';
 
 interface PortfolioFile {
   file: File;
+  description: string;
   status: 'pending' | 'uploading' | 'done' | 'error';
   count: number;
   error?: string;
@@ -122,11 +123,8 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
   }
 
   function addFilesToPortfolio(id: string, fileList: FileList) {
-    const pdfs = Array.from(fileList).filter((f) => f.type === 'application/pdf');
-    if (pdfs.length === 0) {
-      toast.error('Only PDF files are supported');
-      return;
-    }
+    const newFiles = Array.from(fileList);
+    if (newFiles.length === 0) return;
     setPortfolios((p) =>
       p.map((x) =>
         x.id === id
@@ -134,9 +132,19 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
               ...x,
               files: [
                 ...x.files,
-                ...pdfs.map((file) => ({ file, status: 'pending' as const, count: 0 })),
+                ...newFiles.map((file) => ({ file, description: '', status: 'pending' as const, count: 0 })),
               ],
             }
+          : x,
+      ),
+    );
+  }
+
+  function updateFileDescription(portfolioId: string, fileIndex: number, description: string) {
+    setPortfolios((p) =>
+      p.map((x) =>
+        x.id === portfolioId
+          ? { ...x, files: x.files.map((f, i) => (i === fileIndex ? { ...f, description } : f)) }
           : x,
       ),
     );
@@ -186,6 +194,9 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
           formData.append('file', portfolio.files[fi].file);
           formData.append('fileName', portfolio.files[fi].file.name);
           formData.append('portfolioName', portfolio.name.trim());
+          if (portfolio.files[fi].description) {
+            formData.append('description', portfolio.files[fi].description);
+          }
 
           const res = await fetch('/api/setup/upload', { method: 'POST', body: formData });
           const json = (await res.json()) as { count?: number; error?: string; details?: string };
@@ -332,6 +343,7 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
                 onRemove={removePortfolio}
                 onAddFiles={addFilesToPortfolio}
                 onRemoveFile={removeFileFromPortfolio}
+                onUpdateFileDescription={updateFileDescription}
               />
             ))}
           </div>
@@ -572,6 +584,7 @@ function PortfolioCard({
   onRemove,
   onAddFiles,
   onRemoveFile,
+  onUpdateFileDescription,
 }: {
   portfolio: Portfolio;
   index: number;
@@ -581,9 +594,9 @@ function PortfolioCard({
   onRemove: (id: string) => void;
   onAddFiles: (id: string, files: FileList) => void;
   onRemoveFile: (portfolioId: string, fileIndex: number) => void;
+  onUpdateFileDescription: (portfolioId: string, fileIndex: number, description: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   return (
     <Card className="border-white/10 bg-white/[0.06] backdrop-blur-2xl">
@@ -638,13 +651,12 @@ function PortfolioCard({
         >
           <Upload className="size-6 text-white/20 mb-3" />
           <p className="text-xs text-white/40 mb-3">
-            Drop PDF statements for this portfolio
+            Drop files — PDFs, CSVs, screenshots, anything
           </p>
           <label>
             <input
-              ref={inputRef}
               type="file"
-              accept=".pdf"
+              accept=".pdf,.csv,.png,.jpg,.jpeg,.webp,.gif,.xlsx,.txt"
               multiple
               onChange={(e) => {
                 if (e.target.files) onAddFiles(portfolio.id, e.target.files);
@@ -660,37 +672,48 @@ function PortfolioCard({
 
         {/* File list */}
         {portfolio.files.length > 0 && (
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {portfolio.files.map((f, i) => (
               <div
                 key={`${f.file.name}-${i}`}
-                className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2"
+                className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2.5 space-y-2"
               >
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-white/60 truncate">
-                    {f.file.name}
-                    <span className="ml-1.5 text-white/30">{formatFileSize(f.file.size)}</span>
-                  </p>
-                  <p className="text-[11px] text-white/35">
-                    {f.status === 'pending' && 'Ready'}
-                    {f.status === 'uploading' && 'Extracting with AI...'}
-                    {f.status === 'done' && `${f.count} holdings extracted`}
-                    {f.status === 'error' && (f.error ?? 'Failed')}
-                  </p>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-white/60 truncate">
+                      {f.file.name}
+                      <span className="ml-1.5 text-white/30">{formatFileSize(f.file.size)}</span>
+                    </p>
+                    <p className="text-[11px] text-white/35">
+                      {f.status === 'pending' && 'Ready'}
+                      {f.status === 'uploading' && 'Extracting with AI...'}
+                      {f.status === 'done' && `${f.count} holdings extracted`}
+                      {f.status === 'error' && (f.error ?? 'Failed')}
+                    </p>
+                  </div>
+                  <div className="shrink-0">
+                    {f.status === 'pending' && !processing && (
+                      <button
+                        onClick={() => onRemoveFile(portfolio.id, i)}
+                        className="text-white/30 hover:text-white/50 transition-colors"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    )}
+                    {f.status === 'uploading' && <Loader2 className="size-3.5 text-white/30 animate-spin" />}
+                    {f.status === 'done' && <CheckCircle2 className="size-3.5 text-emerald-400" />}
+                    {f.status === 'error' && <span className="text-[10px] text-red-400/60">Failed</span>}
+                  </div>
                 </div>
-                <div className="shrink-0">
-                  {f.status === 'pending' && !processing && (
-                    <button
-                      onClick={() => onRemoveFile(portfolio.id, i)}
-                      className="text-white/30 hover:text-white/50 transition-colors"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  )}
-                  {f.status === 'uploading' && <Loader2 className="size-3.5 text-white/30 animate-spin" />}
-                  {f.status === 'done' && <CheckCircle2 className="size-3.5 text-emerald-400" />}
-                  {f.status === 'error' && <span className="text-[10px] text-red-400/60">Failed</span>}
-                </div>
+                {f.status === 'pending' && (
+                  <input
+                    type="text"
+                    placeholder="Describe this file (optional) — e.g. Q4 2024 bond holdings, screenshot of crypto wallet"
+                    value={f.description}
+                    onChange={(e) => onUpdateFileDescription(portfolio.id, i, e.target.value)}
+                    className="w-full rounded-md bg-white/[0.05] border border-white/[0.08] px-2.5 py-1.5 text-xs text-white/60 placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-white/15"
+                  />
+                )}
               </div>
             ))}
           </div>
