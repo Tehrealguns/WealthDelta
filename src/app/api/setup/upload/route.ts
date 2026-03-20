@@ -22,7 +22,7 @@ const PROMPT = `You are a financial data extraction engine. Extract ALL holdings
 First, briefly describe what you see in the document (2-3 sentences). Then output the JSON.
 
 Return the holdings as a JSON array wrapped in a \`\`\`json code fence. Each object must have exactly these fields:
-- asset_id: a unique slug (lowercase, e.g. "ubs-eq-bhp-001")
+- asset_id: a DETERMINISTIC slug based on ticker or asset name (lowercase, e.g. "eq-bhp-ax" for BHP.AX, "cash-aud" for AUD cash, "crypto-btc" for Bitcoin). Use the ticker symbol as the core identifier. Do NOT include random numbers or source names — the same asset must always produce the same asset_id regardless of which document it appears in.
 - source: the bank/custodian/platform name as best you can determine
 - asset_name: full name of the holding
 - asset_class: one of "Equity", "Bond", "Cash", "Alternative", "Private Equity", "Commodity", "Cryptocurrency", "Currency"
