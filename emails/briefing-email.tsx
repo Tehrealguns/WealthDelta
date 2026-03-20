@@ -15,10 +15,79 @@ interface BriefingEmailProps {
   content: string;
 }
 
+type ParsedBlock =
+  | { type: 'heading'; text: string }
+  | { type: 'paragraph'; text: string }
+  | { type: 'list'; items: string[] };
+
+function parseContent(raw: string): ParsedBlock[] {
+  const cleaned = raw
+    .replace(/\*\*/g, '')
+    .replace(/#{1,6}\s*/g, '')
+    .replace(/^---+$/gm, '')
+    .replace(/[🔴🟡🟢⚠️✅❌🔵⭐💡📊📈📉🚨]/gu, '')
+    .replace(/\|[^\n]+\|/g, '')
+    .replace(/^\s*\|?\s*-{2,}\s*\|?.*$/gm, '');
+
+  const blocks: ParsedBlock[] = [];
+  const lines = cleaned.split('\n');
+  let currentList: string[] = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      if (currentList.length > 0) {
+        blocks.push({ type: 'list', items: [...currentList] });
+        currentList = [];
+      }
+      continue;
+    }
+
+    const isAllCaps =
+      line.length > 3 &&
+      line === line.toUpperCase() &&
+      /[A-Z]/.test(line) &&
+      !line.startsWith('-');
+
+    const isSectionHeader =
+      isAllCaps ||
+      /^\d+\.\s+[A-Z]/.test(line);
+
+    if (isSectionHeader) {
+      if (currentList.length > 0) {
+        blocks.push({ type: 'list', items: [...currentList] });
+        currentList = [];
+      }
+      const headerText = line.replace(/^\d+\.\s*/, '').trim();
+      blocks.push({ type: 'heading', text: headerText });
+      continue;
+    }
+
+    if (/^[-•]\s+/.test(line)) {
+      currentList.push(line.replace(/^[-•]\s+/, ''));
+      continue;
+    }
+
+    if (currentList.length > 0) {
+      blocks.push({ type: 'list', items: [...currentList] });
+      currentList = [];
+    }
+    blocks.push({ type: 'paragraph', text: line });
+  }
+
+  if (currentList.length > 0) {
+    blocks.push({ type: 'list', items: currentList });
+  }
+
+  return blocks;
+}
+
 export default function BriefingEmail({
   briefingDate = new Date().toISOString().split('T')[0],
   content = 'Your briefing content will appear here.',
 }: BriefingEmailProps) {
+  const blocks = parseContent(content);
+
   return (
     <Html>
       <Head />
@@ -26,7 +95,7 @@ export default function BriefingEmail({
       <Body style={main}>
         <Container style={container}>
           <Section style={header}>
-            <Text style={brandText}>WealthDelta</Text>
+            <Text style={brandText}>WEALTHDELTA</Text>
             <Text style={dateText}>{briefingDate}</Text>
           </Section>
           <Hr style={divider} />
@@ -34,18 +103,28 @@ export default function BriefingEmail({
             <Heading as="h1" style={heading}>
               Daily Briefing
             </Heading>
-            {content.split('\n\n').map((paragraph, i) => {
-              if (paragraph.startsWith('**') || paragraph.startsWith('#')) {
-                const cleaned = paragraph.replace(/[*#]+/g, '').trim();
+            {blocks.map((block, i) => {
+              if (block.type === 'heading') {
                 return (
                   <Heading as="h2" key={i} style={subheading}>
-                    {cleaned}
+                    {block.text}
                   </Heading>
+                );
+              }
+              if (block.type === 'list') {
+                return (
+                  <Section key={i} style={listSection}>
+                    {block.items.map((item, j) => (
+                      <Text key={j} style={listItem}>
+                        <span style={bullet}>—</span> {item}
+                      </Text>
+                    ))}
+                  </Section>
                 );
               }
               return (
                 <Text key={i} style={bodyText}>
-                  {paragraph}
+                  {block.text}
                 </Text>
               );
             })}
@@ -64,68 +143,84 @@ export default function BriefingEmail({
 
 const main = {
   backgroundColor: '#0a0a0a',
-  fontFamily: "'Sora', -apple-system, BlinkMacSystemFont, sans-serif",
+  fontFamily:
+    "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
 };
 
 const container = {
   margin: '0 auto',
-  padding: '40px 24px',
+  padding: '48px 28px',
   maxWidth: '600px',
 };
 
 const header = {
-  display: 'flex' as const,
-  justifyContent: 'space-between' as const,
-  alignItems: 'center' as const,
-  marginBottom: '8px',
+  marginBottom: '4px',
 };
 
 const brandText = {
-  color: '#ffffff',
-  fontSize: '14px',
-  fontWeight: '600' as const,
-  letterSpacing: '0.05em',
-  margin: '0',
+  color: '#ca8a04',
+  fontSize: '11px',
+  fontWeight: '700' as const,
+  letterSpacing: '0.15em',
+  margin: '0 0 4px 0',
 };
 
 const dateText = {
-  color: 'rgba(255,255,255,0.25)',
+  color: 'rgba(255,255,255,0.3)',
   fontSize: '12px',
   margin: '0',
 };
 
 const divider = {
-  borderColor: 'rgba(255,255,255,0.06)',
-  margin: '16px 0',
+  borderColor: 'rgba(255,255,255,0.08)',
+  margin: '20px 0',
 };
 
 const contentSection = {
-  padding: '8px 0',
+  padding: '0',
 };
 
 const heading = {
   color: '#ffffff',
-  fontSize: '20px',
+  fontSize: '22px',
   fontWeight: '600' as const,
   lineHeight: '1.3',
-  margin: '0 0 20px 0',
+  margin: '0 0 24px 0',
 };
 
 const subheading = {
-  color: 'rgba(255,255,255,0.7)',
-  fontSize: '14px',
+  color: '#ca8a04',
+  fontSize: '12px',
   fontWeight: '600' as const,
   lineHeight: '1.4',
-  margin: '24px 0 8px 0',
+  margin: '28px 0 12px 0',
   textTransform: 'uppercase' as const,
-  letterSpacing: '0.05em',
+  letterSpacing: '0.1em',
 };
 
 const bodyText = {
-  color: 'rgba(255,255,255,0.5)',
+  color: 'rgba(255,255,255,0.65)',
+  fontSize: '14px',
+  lineHeight: '1.75',
+  margin: '0 0 10px 0',
+};
+
+const listSection = {
+  padding: '0',
+  margin: '0 0 8px 0',
+};
+
+const listItem = {
+  color: 'rgba(255,255,255,0.6)',
   fontSize: '14px',
   lineHeight: '1.7',
-  margin: '0 0 12px 0',
+  margin: '0 0 6px 0',
+  paddingLeft: '4px',
+};
+
+const bullet = {
+  color: 'rgba(202,138,4,0.6)',
+  marginRight: '6px',
 };
 
 const footer = {
