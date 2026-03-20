@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCw,
-  ChevronDown,
   X,
   Plus,
 } from 'lucide-react';
@@ -182,10 +181,62 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
             Upload Statements
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Source name + replace toggle */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-1.5">
+        <CardContent className="space-y-5">
+          {/* Mode: add new vs update existing */}
+          {existingSources.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex rounded-lg border border-white/[0.08] overflow-hidden">
+                <button
+                  onClick={() => { setReplaceSource(null); setSourceName(''); }}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${
+                    !replaceSource
+                      ? 'bg-white/[0.08] text-white/80'
+                      : 'text-white/30 hover:text-white/50 hover:bg-white/[0.03]'
+                  }`}
+                >
+                  Add New Source
+                </button>
+                <button
+                  onClick={() => {
+                    if (!replaceSource && existingSources[0]) {
+                      setReplaceSource(existingSources[0]);
+                      setSourceName(existingSources[0]);
+                    }
+                  }}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors border-l border-white/[0.08] ${
+                    replaceSource
+                      ? 'bg-white/[0.08] text-white/80'
+                      : 'text-white/30 hover:text-white/50 hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <RefreshCw className="size-3 inline mr-1.5 -mt-px" />
+                  Update Existing
+                </button>
+              </div>
+
+              {replaceSource && (
+                <div className="flex flex-wrap gap-1.5">
+                  {existingSources.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => { setReplaceSource(s); setSourceName(s); }}
+                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                        replaceSource === s
+                          ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                          : 'bg-white/[0.04] text-white/40 border border-white/[0.06] hover:border-white/15 hover:text-white/60'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Source name input */}
+          {!replaceSource && (
+            <div className="space-y-1.5">
               <label className="text-xs text-white/40">Portfolio / Source Name</label>
               <Input
                 placeholder="e.g. UBS Private Banking, Macquarie Wrap"
@@ -194,31 +245,12 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
                 className="border-white/10 bg-white/[0.06] text-white placeholder:text-white/25 focus:border-white/20 h-10"
               />
             </div>
-            {existingSources.length > 0 && (
-              <div className="space-y-1.5">
-                <label className="text-xs text-white/40">Replace existing source?</label>
-                <select
-                  value={replaceSource ?? ''}
-                  onChange={(e) => setReplaceSource(e.target.value || null)}
-                  className="h-10 w-full sm:w-48 rounded-md border border-white/10 bg-white/[0.06] px-3 text-sm text-white/70"
-                >
-                  <option value="">No — add new</option>
-                  {existingSources.map((s) => (
-                    <option key={s} value={s}>Replace: {s}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
+          )}
 
           {replaceSource && (
-            <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-              <RefreshCw className="size-3.5 text-amber-400 shrink-0" />
-              <p className="text-xs text-amber-400/80">
-                All existing holdings from <span className="font-medium text-amber-400">{replaceSource}</span> will
-                be deleted and replaced with the new extraction.
-              </p>
-            </div>
+            <p className="text-xs text-white/30">
+              Uploading will replace all holdings from <span className="text-amber-400/70 font-medium">{replaceSource}</span> with the new data.
+            </p>
           )}
 
           {/* Drop zone */}
@@ -341,35 +373,31 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
         <Card className="border-white/[0.06] bg-[#0a0a0a]">
           <CardHeader>
             <CardTitle className="text-xs font-medium text-white/30 tracking-widest uppercase">
-              Existing Sources · {staticHoldings.length} holdings
+              Your Sources · {staticHoldings.length} holdings
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {holdingsBySource.map((group) => (
-              <div
+              <button
                 key={group.source}
-                className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3"
+                onClick={() => {
+                  setReplaceSource(group.source);
+                  setSourceName(group.source);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="flex w-full items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3 hover:bg-white/[0.04] hover:border-white/[0.10] transition-colors group"
               >
-                <div>
+                <div className="text-left">
                   <p className="text-sm font-medium text-white/70">{group.source}</p>
-                  <p className="text-xs text-white/30 mt-0.5">{group.count} holdings</p>
+                  <p className="text-xs text-white/30 mt-0.5">{group.count} holding{group.count !== 1 ? 's' : ''}</p>
                 </div>
-                <div className="text-right">
-                  <p className="font-mono text-sm tabular-nums text-white/60">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-sm tabular-nums text-white/50">
                     {formatCurrency(group.total)}
-                  </p>
-                  <button
-                    onClick={() => {
-                      setReplaceSource(group.source);
-                      setSourceName(group.source);
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className="text-[11px] text-white/25 hover:text-white/50 mt-0.5 transition-colors"
-                  >
-                    Update this source
-                  </button>
+                  </span>
+                  <RefreshCw className="size-3.5 text-white/15 group-hover:text-white/40 transition-colors" />
                 </div>
-              </div>
+              </button>
             ))}
           </CardContent>
         </Card>
