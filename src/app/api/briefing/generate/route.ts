@@ -3,15 +3,25 @@ import { createClient } from '@/lib/supabase/server';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { maskPII } from '@/lib/pii-masker';
 import { formatCurrency } from '@/lib/decimal';
-import { enrichHoldings, buildMarketContext } from '@/lib/market-data';
+import { enrichHoldings, buildMarketContext, fetchBenchmarks } from '@/lib/market-data';
 import type { HoldingRow, DailySnapshotRow } from '@/lib/types';
 
-const BRIEFING_SYSTEM = `You are a private wealth advisor writing a concise daily briefing for an ultra-high-net-worth individual. Write in a professional but conversational tone. Structure your response with:
+const BRIEFING_SYSTEM = `You are a private wealth advisor writing a concise daily briefing for an ultra-high-net-worth individual. Write in a professional but conversational tone.
 
+CRITICAL — ACCURACY REQUIREMENTS:
+- Every number you report MUST come directly from the data provided. Never estimate or hallucinate prices.
+- For commodities (gold, silver, oil), use the exact benchmark prices provided under "GLOBAL BENCHMARKS".
+- For crypto (BTC, ETH), use the exact prices provided. Report in USD.
+- For currencies/FX pairs, use the exact rates provided. State the direction clearly.
+- For equities, use the live prices from "LIVE MARKET DATA". If a holding has no live price, state the last known valuation and flag it as stale.
+- When calculating portfolio impact, show your math briefly.
+- If data is missing or stale, say so explicitly. Never fill gaps with assumptions.
+
+Structure your response with:
 1. **Portfolio Summary** — Total value, daily change (amount and percentage)
-2. **Key Movers** — Top 3-5 holdings that drove the change, with context
-3. **Market Context** — Relevant macro events that impacted the portfolio
-4. **Risk Flags** — Any concentration risks, unusual movements, or items to watch
+2. **Key Movers** — Top 3-5 holdings that drove the change, with context on WHY they moved
+3. **Market Context** — Gold, oil, crypto, FX, and index movements that matter to this portfolio
+4. **Risk Flags** — Concentration risks, unusual movements, currency exposure, items to watch
 5. **Recommendation** — One or two actionable suggestions
 
 Keep it under 500 words. Use proper currency formatting. Do not include any PII.`;
@@ -26,7 +36,18 @@ export async function POST(request: NextRequest) {
 
   const userId = userData.user.id;
   const body = (await request.json()) as { customInstructions?: string };
-  const customInstructions = body.customInstructions ?? '';
+
+  const { data: userSettings } = await supabase
+    .from('user_settings')
+    .select('custom_instructions, watch_items, focus_areas')
+    .eq('user_id', userId)
+    .single();
+
+  const customInstructions = [
+    body.customInstructions || userSettings?.custom_instructions || '',
+    userSettings?.watch_items ? `WATCH LIST (always cover these): ${userSettings.watch_items}` : '',
+    userSettings?.focus_areas ? `FOCUS AREAS (prioritize analysis on): ${userSettings.focus_areas}` : '',
+  ].filter(Boolean).join('\n');
 
   const { data: holdings } = await supabase
     .from('holdings')
@@ -72,6 +93,7 @@ ${holdings.map((h) => {
   return `  ${h.asset_name} (${h.source}, ${h.asset_class}): ${formatCurrency(h.valuation_base)}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}`;
 }).join('\n')}
 ${marketContext}
+${await fetchBenchmarks(userSettings?.watch_items || '')}
 ${prevSnapshot ? `\nPREVIOUS SNAPSHOT (${prevSnapshot.snapshot_date}):\nTotal: ${formatCurrency(prevSnapshot.total_value)}` : ''}
 `;
 

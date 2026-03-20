@@ -16,15 +16,71 @@ export interface QuoteResult {
 const quoteCache = new Map<string, { data: QuoteResult; expiry: number }>();
 const CACHE_TTL = 15 * 60 * 1000;
 
+const BENCHMARK_SYMBOLS: Record<string, string> = {
+  'GC=F': 'Gold (XAU/USD)',
+  'SI=F': 'Silver (XAG/USD)',
+  'CL=F': 'WTI Crude Oil',
+  'BZ=F': 'Brent Crude Oil',
+  'BTC-USD': 'Bitcoin',
+  'ETH-USD': 'Ethereum',
+  'AUDUSD=X': 'AUD/USD',
+  'EURUSD=X': 'EUR/USD',
+  'GBPUSD=X': 'GBP/USD',
+  'USDJPY=X': 'USD/JPY',
+  '^GSPC': 'S&P 500',
+  '^DJI': 'Dow Jones',
+  '^IXIC': 'NASDAQ',
+  '^AXJO': 'ASX 200',
+  '^FTSE': 'FTSE 100',
+  'DX-Y.NYB': 'US Dollar Index',
+};
+
+const TICKER_ALIASES: Record<string, string> = {
+  'XAU': 'GC=F',
+  'GOLD': 'GC=F',
+  'XAG': 'SI=F',
+  'SILVER': 'SI=F',
+  'OIL': 'CL=F',
+  'WTI': 'CL=F',
+  'BRENT': 'BZ=F',
+  'BTC': 'BTC-USD',
+  'BITCOIN': 'BTC-USD',
+  'ETH': 'ETH-USD',
+  'ETHEREUM': 'ETH-USD',
+  'AUD/USD': 'AUDUSD=X',
+  'AUDUSD': 'AUDUSD=X',
+  'EUR/USD': 'EURUSD=X',
+  'EURUSD': 'EURUSD=X',
+  'GBP/USD': 'GBPUSD=X',
+  'GBPUSD': 'GBPUSD=X',
+  'USD/JPY': 'USDJPY=X',
+  'USDJPY': 'USDJPY=X',
+  'SPX': '^GSPC',
+  'S&P': '^GSPC',
+  'S&P500': '^GSPC',
+  'DOW': '^DJI',
+  'NASDAQ': '^IXIC',
+  'ASX200': '^AXJO',
+  'ASX': '^AXJO',
+  'FTSE': '^FTSE',
+  'DXY': 'DX-Y.NYB',
+};
+
+export function resolveSymbol(raw: string): string {
+  const upper = raw.trim().toUpperCase();
+  return TICKER_ALIASES[upper] ?? raw.trim();
+}
+
 export async function getQuote(symbol: string): Promise<QuoteResult> {
-  const cached = quoteCache.get(symbol);
+  const resolved = resolveSymbol(symbol);
+  const cached = quoteCache.get(resolved);
   if (cached && Date.now() < cached.expiry) return cached.data;
 
   try {
-    const result = await yf.quote(symbol);
+    const result = await yf.quote(resolved);
 
     const quote: QuoteResult = {
-      symbol,
+      symbol: resolved,
       price: result.regularMarketPrice ?? null,
       previousClose: result.regularMarketPreviousClose ?? null,
       change: result.regularMarketChange ?? null,
@@ -34,11 +90,11 @@ export async function getQuote(symbol: string): Promise<QuoteResult> {
       marketState: result.marketState ?? null,
     };
 
-    quoteCache.set(symbol, { data: quote, expiry: Date.now() + CACHE_TTL });
+    quoteCache.set(resolved, { data: quote, expiry: Date.now() + CACHE_TTL });
     return quote;
   } catch {
     return {
-      symbol,
+      symbol: resolved,
       price: null,
       previousClose: null,
       change: null,
@@ -55,11 +111,13 @@ export async function getQuotes(symbols: string[]): Promise<Map<string, QuoteRes
   const toFetch: string[] = [];
 
   for (const sym of symbols) {
-    const cached = quoteCache.get(sym);
+    const resolved = resolveSymbol(sym);
+    const cached = quoteCache.get(resolved);
     if (cached && Date.now() < cached.expiry) {
       results.set(sym, cached.data);
+      results.set(resolved, cached.data);
     } else {
-      toFetch.push(sym);
+      toFetch.push(resolved);
     }
   }
 
@@ -101,11 +159,12 @@ export async function enrichHoldings(
     .map((h) => h.ticker_symbol)
     .filter((t): t is string => t != null && t.length > 0);
 
-  const uniqueTickers = [...new Set(tickers)];
+  const uniqueTickers = [...new Set(tickers.map(resolveSymbol))];
   const quotes = uniqueTickers.length > 0 ? await getQuotes(uniqueTickers) : new Map();
 
   return holdings.map((h) => {
-    const quote = h.ticker_symbol ? quotes.get(h.ticker_symbol) : undefined;
+    const resolved = h.ticker_symbol ? resolveSymbol(h.ticker_symbol) : null;
+    const quote = resolved ? quotes.get(resolved) : undefined;
 
     let liveValue: number | null = null;
     if (quote?.price != null && h.quantity != null) {
@@ -127,6 +186,47 @@ export async function enrichHoldings(
   });
 }
 
+export async function fetchBenchmarks(watchItems?: string): Promise<string> {
+  const symbols = new Set(Object.keys(BENCHMARK_SYMBOLS));
+
+  if (watchItems) {
+    for (const raw of watchItems.split(',')) {
+      const s = raw.trim();
+      if (s) symbols.add(resolveSymbol(s));
+    }
+  }
+
+  const quotes = await getQuotes([...symbols]);
+  const lines: string[] = [];
+
+  for (const [sym, label] of Object.entries(BENCHMARK_SYMBOLS)) {
+    const q = quotes.get(sym);
+    if (!q?.price) continue;
+    const chg = q.change != null ? `${q.change >= 0 ? '+' : ''}${q.change.toFixed(2)}` : '';
+    const pct = q.changePct != null ? `(${q.changePct >= 0 ? '+' : ''}${q.changePct.toFixed(2)}%)` : '';
+    lines.push(`  ${label} (${sym}): $${q.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${chg} ${pct}`.trim());
+  }
+
+  if (watchItems) {
+    for (const raw of watchItems.split(',')) {
+      const s = raw.trim();
+      if (!s) continue;
+      const resolved = resolveSymbol(s);
+      if (BENCHMARK_SYMBOLS[resolved]) continue;
+      const q = quotes.get(resolved);
+      if (!q?.price) continue;
+      const chg = q.change != null ? `${q.change >= 0 ? '+' : ''}${q.change.toFixed(2)}` : '';
+      const pct = q.changePct != null ? `(${q.changePct >= 0 ? '+' : ''}${q.changePct.toFixed(2)}%)` : '';
+      const name = q.name || resolved;
+      lines.push(`  ${name} (${resolved}): $${q.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${chg} ${pct}`.trim());
+    }
+  }
+
+  return lines.length > 0
+    ? `\nGLOBAL BENCHMARKS & WATCHED ASSETS (live):\n${lines.join('\n')}`
+    : '';
+}
+
 export function buildMarketContext(enriched: EnrichedHolding[]): string {
   const withPrices = enriched.filter((e) => e.live_price != null);
   if (withPrices.length === 0) return '';
@@ -140,5 +240,5 @@ export function buildMarketContext(enriched: EnrichedHolding[]): string {
     return `  ${e.ticker_symbol}: ${qty} = ${liveVal} ${chg} ${chgPct}`.trim();
   });
 
-  return `\nLIVE MARKET DATA (real-time prices):\n${lines.join('\n')}`;
+  return `\nLIVE MARKET DATA (portfolio holdings):\n${lines.join('\n')}`;
 }

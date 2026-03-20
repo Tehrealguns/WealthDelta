@@ -3,7 +3,7 @@ import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { maskPII } from '@/lib/pii-masker';
 import { toDecimal, formatCurrency, Decimal } from '@/lib/decimal';
-import { enrichHoldings, buildMarketContext } from '@/lib/market-data';
+import { enrichHoldings, buildMarketContext, fetchBenchmarks } from '@/lib/market-data';
 import { renderResearchPDF } from '@/lib/pdf/render';
 import { sendMail } from '@/lib/mailer';
 import { render } from '@react-email/components';
@@ -12,12 +12,22 @@ import type { HoldingRow, SnapshotBreakdown, Source, AssetClass } from '@/lib/ty
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
-const BRIEFING_SYSTEM = `You are a private wealth advisor writing a concise daily briefing for an ultra-high-net-worth individual. Write in a professional but conversational tone. Structure your response with:
+const BRIEFING_SYSTEM = `You are a private wealth advisor writing a concise daily briefing for an ultra-high-net-worth individual. Write in a professional but conversational tone.
 
+CRITICAL — ACCURACY REQUIREMENTS:
+- Every number you report MUST come directly from the data provided. Never estimate or hallucinate prices.
+- For commodities (gold, silver, oil), use the exact benchmark prices provided under "GLOBAL BENCHMARKS".
+- For crypto (BTC, ETH), use the exact prices provided. Report in USD.
+- For currencies/FX pairs, use the exact rates provided. State the direction clearly (e.g. "AUD weakened to 0.6432 against USD").
+- For equities, use the live prices from "LIVE MARKET DATA". If a holding has no live price, state the last known valuation and flag it as stale.
+- When calculating portfolio impact from price moves, show your math briefly (e.g. "100 oz × $2,340 = $234,000, up $1,200 from yesterday's close").
+- If data is missing or stale, say so explicitly. Never fill gaps with assumptions.
+
+Structure your response with:
 1. **Portfolio Summary** — Total value, daily change (amount and percentage)
-2. **Key Movers** — Top 3-5 holdings that drove the change, with context
-3. **Market Context** — Relevant macro events that impacted the portfolio
-4. **Risk Flags** — Any concentration risks, unusual movements, or items to watch
+2. **Key Movers** — Top 3-5 holdings that drove the change, with context on WHY they moved
+3. **Market Context** — Gold, oil, crypto, FX, and index movements that matter to this portfolio
+4. **Risk Flags** — Concentration risks, unusual movements, currency exposure, items to watch
 5. **Recommendation** — One or two actionable suggestions
 
 Keep it under 500 words. Use proper currency formatting. Do not include any PII.`;
@@ -37,10 +47,21 @@ Write approximately 2000-3000 words. Use professional financial language.`;
 
 const AEST_OFFSET = 10;
 
+const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+
 function getCurrentAESTHour(): string {
   const now = new Date();
   const aestHour = (now.getUTCHours() + AEST_OFFSET) % 24;
   return `${String(aestHour).padStart(2, '0')}:00`;
+}
+
+function getCurrentAESTDay(): string {
+  const now = new Date();
+  const aestHour = now.getUTCHours() + AEST_OFFSET;
+  const dayOffset = aestHour >= 24 ? 1 : 0;
+  const aestDate = new Date(now);
+  aestDate.setUTCDate(aestDate.getUTCDate() + dayOffset);
+  return DAY_KEYS[aestDate.getUTCDay()];
 }
 
 export async function POST(request: NextRequest) {
@@ -54,17 +75,32 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceClient(supabaseUrl, serviceKey);
 
   const currentAEST = getCurrentAESTHour();
+  const currentDay = getCurrentAESTDay();
 
-  const { data: settings, error: settingsErr } = await supabase
+  const { data: allSettings, error: settingsErr } = await supabase
     .from('user_settings')
     .select('*')
     .eq('email_enabled', true)
     .eq('email_time', currentAEST);
 
-  if (settingsErr || !settings?.length) {
+  if (settingsErr || !allSettings?.length) {
     return NextResponse.json({
       message: `No users scheduled for ${currentAEST} AEST`,
       currentAEST,
+      processed: 0,
+    });
+  }
+
+  const settings = allSettings.filter((s) => {
+    const days = (s.email_days || 'mon,tue,wed,thu,fri').split(',').map((d: string) => d.trim());
+    return days.includes(currentDay);
+  });
+
+  if (!settings.length) {
+    return NextResponse.json({
+      message: `No users scheduled for ${currentDay} ${currentAEST} AEST`,
+      currentAEST,
+      currentDay,
       processed: 0,
     });
   }
@@ -167,8 +203,9 @@ export async function POST(request: NextRequest) {
         { onConflict: 'user_id,snapshot_date' },
       );
 
-      // --- Build portfolio context with live market data ---
+      // --- Build portfolio context with live market data + benchmarks ---
       const marketContext = buildMarketContext(enriched);
+      const benchmarkContext = await fetchBenchmarks(userSettings.watch_items || '');
       const portfolioContext = `
 CURRENT PORTFOLIO (${today}):
 Total Value: ${formatCurrency(totalValue.toNumber())}
@@ -188,12 +225,14 @@ ${holdings.map((h) => {
   return `  ${h.asset_name} (${h.source}, ${h.asset_class}): ${formatCurrency(h.valuation_base)}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}`;
 }).join('\n')}
 ${marketContext}
+${benchmarkContext}
 `;
 
       const maskedContext = maskPII(portfolioContext);
       const customInstructions = [
         userSettings.custom_instructions,
-        userSettings.watch_items ? `WATCH: ${userSettings.watch_items}` : '',
+        userSettings.watch_items ? `WATCH LIST (always cover these): ${userSettings.watch_items}` : '',
+        userSettings.focus_areas ? `FOCUS AREAS (prioritize analysis on): ${userSettings.focus_areas}` : '',
       ].filter(Boolean).join('\n');
 
       // --- Generate executive summary ---
@@ -228,10 +267,13 @@ ${marketContext}
         { onConflict: 'user_id,briefing_date' },
       );
 
-      // --- Generate research PDF (if enabled) ---
+      // --- Generate research PDF (if enabled and scheduled for today) ---
       let pdfBuffer: Buffer | null = null;
+      const pdfDaysList = (userSettings.pdf_days || '').split(',').map((d: string) => d.trim()).filter(Boolean);
+      const shouldAttachPdf = userSettings.include_pdf &&
+        (pdfDaysList.length === 0 || pdfDaysList.includes(currentDay));
 
-      if (userSettings.include_pdf) {
+      if (shouldAttachPdf) {
         const researchMsg = await anthropic.messages.create({
           model: ANTHROPIC_MODEL,
           max_tokens: 8192,

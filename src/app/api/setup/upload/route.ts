@@ -25,15 +25,24 @@ Return the holdings as a JSON array wrapped in a \`\`\`json code fence. Each obj
 - asset_id: a unique slug (lowercase, e.g. "ubs-eq-bhp-001")
 - source: the bank/custodian/platform name as best you can determine
 - asset_name: full name of the holding
-- asset_class: one of "Equity", "Bond", "Cash", "Alternative", "Private Equity"
-- ticker_symbol: stock/ETF ticker in Yahoo Finance format (e.g. "BHP.AX", "AAPL"). null if not listed.
-- quantity: number of shares/units. null for cash or if unavailable.
+- asset_class: one of "Equity", "Bond", "Cash", "Alternative", "Private Equity", "Commodity", "Cryptocurrency", "Currency"
+- ticker_symbol: stock/ETF/commodity/crypto ticker in Yahoo Finance format. CRITICAL ticker rules:
+  * Australian equities: append ".AX" (e.g. "BHP.AX", "CBA.AX", "CSL.AX")
+  * US equities: plain ticker (e.g. "AAPL", "MSFT", "GOOGL")
+  * UK equities: append ".L" (e.g. "SHEL.L", "BP.L")
+  * Gold: "GC=F" | Silver: "SI=F" | Platinum: "PL=F"
+  * WTI Oil: "CL=F" | Brent Oil: "BZ=F" | Natural Gas: "NG=F"
+  * Bitcoin: "BTC-USD" | Ethereum: "ETH-USD" | Solana: "SOL-USD"
+  * ETFs: use their actual ticker (e.g. "VAS.AX", "SPY", "QQQ")
+  * FX/Currency: use Yahoo format (e.g. "AUDUSD=X", "EURUSD=X")
+  * null ONLY if truly unlisted (private equity, term deposits, etc.)
+- quantity: number of shares/units/ounces/coins. null for cash balances or if unavailable.
 - valuation_base: total market value as a number (no currency symbols, no commas)
 - valuation_date: ISO date "YYYY-MM-DD" from the document. Use today if unclear.
 - currency: 3-letter currency code (e.g. "AUD", "USD")
 - is_static: true
 
-Extract EVERY holding. Include cash balances as "Cash". If you cannot extract structured data, return an empty array [].`;
+Extract EVERY holding. Include cash balances as asset_class "Cash". Include managed funds, ETFs, commodities, crypto, and currency positions. If you cannot extract structured data, return an empty array [].`;
 
 function sseEvent(data: Record<string, unknown>): string {
   return `data: ${JSON.stringify(data)}\n\n`;

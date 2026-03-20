@@ -16,6 +16,7 @@ const NAV_LINKS = [
   { href: '/vault', label: 'Vault' },
   { href: '/research', label: 'Research' },
   { href: '/connections', label: 'Connections' },
+  { href: '/settings', label: 'Settings' },
 ] as const;
 
 export function AppNav() {

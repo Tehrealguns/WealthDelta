@@ -1,4 +1,4 @@
-export const ASSET_CLASSES = ['Equity', 'Bond', 'Cash', 'Alternative', 'Private Equity'] as const;
+export const ASSET_CLASSES = ['Equity', 'Bond', 'Cash', 'Alternative', 'Private Equity', 'Commodity', 'Cryptocurrency', 'Currency'] as const;
 export type AssetClass = (typeof ASSET_CLASSES)[number];
 
 export type Source = string;
