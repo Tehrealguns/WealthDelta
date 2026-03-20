@@ -27,13 +27,28 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!body.content) {
+    return NextResponse.json(
+      { error: 'No content', details: 'Generate a briefing first' },
+      { status: 400 },
+    );
+  }
+
   const today = new Date().toISOString().split('T')[0];
 
+  let html: string;
   try {
-    const html = await render(
+    html = await render(
       BriefingEmail({ briefingDate: today, content: body.content }),
     );
+  } catch (err) {
+    return NextResponse.json(
+      { error: 'Failed to render email', details: err instanceof Error ? err.message : 'Render error' },
+      { status: 500 },
+    );
+  }
 
+  try {
     await sendMail({
       to: toEmail,
       subject: `WealthDelta Daily Briefing — ${today}`,
@@ -42,8 +57,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: 'Email sent' });
   } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[briefing/send] SMTP error:', msg);
     return NextResponse.json(
-      { error: 'Failed to send email', details: err instanceof Error ? err.message : 'Unknown error' },
+      {
+        error: 'Failed to send email',
+        details: msg,
+        smtp_configured: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
+        smtp_host: process.env.SMTP_HOST || '(not set)',
+      },
       { status: 500 },
     );
   }
