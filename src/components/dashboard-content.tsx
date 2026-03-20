@@ -28,11 +28,17 @@ const ACCENT_OPTIONS = [
   { key: 'cyan', color: 'bg-cyan-500', ring: 'ring-cyan-500' },
 ];
 
-function getGreeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
+function useGreeting(): string {
+  const [greeting, setGreeting] = useState('Welcome');
+
+  useEffect(() => {
+    const h = new Date().getHours();
+    if (h < 12) setGreeting('Good morning');
+    else if (h < 18) setGreeting('Good afternoon');
+    else setGreeting('Good evening');
+  }, []);
+
+  return greeting;
 }
 
 const dashboardFeatures = [
@@ -104,11 +110,12 @@ function CollapsibleSection({
   children: React.ReactNode;
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(() => {
-    if (typeof window === 'undefined') return defaultOpen;
+  const [open, setOpen] = useState(defaultOpen);
+
+  useEffect(() => {
     const saved = localStorage.getItem(`wd-section-${storageKey}`);
-    return saved !== null ? saved === 'true' : defaultOpen;
-  });
+    if (saved !== null) setOpen(saved === 'true');
+  }, [storageKey]);
 
   function toggle() {
     setOpen((prev) => {
@@ -201,6 +208,7 @@ export function DashboardContent({ holdings, userEmail, displayName, snapshotHis
   );
 
   const firstName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+  const greeting = useGreeting();
 
   return (
     <div className={`space-y-8 ${compact ? 'space-y-5' : ''}`}>
@@ -208,7 +216,7 @@ export function DashboardContent({ holdings, userEmail, displayName, snapshotHis
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">
-            {getGreeting()}, {firstName}
+            {greeting}, {firstName}
           </h1>
           <div className="flex items-center gap-3 mt-1">
             {portfolioDelta ? (
