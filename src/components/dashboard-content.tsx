@@ -229,7 +229,7 @@ export function DashboardContent({ holdings, userEmail, displayName, snapshotHis
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href="/onboard"
+            href="/vault"
             className="inline-flex items-center rounded-md border border-white/[0.08] px-3 py-1.5 text-sm font-medium text-white/40 hover:text-white hover:bg-white/5 transition-colors"
           >
             Upload Statements

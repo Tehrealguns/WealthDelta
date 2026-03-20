@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
   const fileName = formData.get('fileName') as string | null;
   const portfolioName = formData.get('portfolioName') as string | null;
   const fileDescription = formData.get('description') as string | null;
+  const replaceSource = formData.get('replaceSource') as string | null;
 
   if (!file || file.size === 0) {
     return new Response(sseEvent({ type: 'error', message: 'No file uploaded' }), {
@@ -167,10 +168,20 @@ export async function POST(request: NextRequest) {
         return;
       }
 
+      const effectiveSource = portfolioName || holdings[0]?.source || 'Unknown';
+
+      if (replaceSource) {
+        await supabase
+          .from('holdings')
+          .delete()
+          .eq('user_id', userId)
+          .eq('source', replaceSource);
+      }
+
       const rows = holdings.map((item) => ({
         user_id: userId,
         asset_id: item.asset_id,
-        source: portfolioName || item.source,
+        source: effectiveSource,
         asset_name: item.asset_name,
         asset_class: item.asset_class,
         ticker_symbol: item.ticker_symbol,
