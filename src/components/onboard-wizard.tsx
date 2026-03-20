@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Loader2,
   ArrowRight,
+  ArrowLeft,
   Shield,
   TrendingUp,
   Scale,
@@ -15,8 +17,33 @@ import {
   Target,
   Clock,
   FileText,
+  Plus,
+  Trash2,
+  Upload,
+  FileUp,
+  CheckCircle2,
+  X,
+  Briefcase,
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+// --------------- types ---------------
+
+interface PortfolioFile {
+  file: File;
+  status: 'pending' | 'uploading' | 'done' | 'error';
+  count: number;
+  error?: string;
+}
+
+interface Portfolio {
+  id: string;
+  name: string;
+  description: string;
+  files: PortfolioFile[];
+}
+
+// --------------- constants ---------------
 
 const FOCUS_AREAS = [
   { id: 'risk', label: 'Risk Management', icon: Shield, description: 'Concentration, drawdown, volatility' },
@@ -34,6 +61,18 @@ const TIME_OPTIONS = Array.from({ length: 24 }, (_, h) => {
   return { value: `${hour24}:00`, label: `${hour12}:00 ${ampm}` };
 });
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function makeId() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+// --------------- component ---------------
+
 interface OnboardWizardProps {
   userEmail: string;
   existingSettings: {
@@ -46,29 +85,155 @@ interface OnboardWizardProps {
 }
 
 export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProps) {
+  const router = useRouter();
+  const [step, setStep] = useState(0);
+
+  // Step 0: Portfolios
+  const [portfolios, setPortfolios] = useState<Portfolio[]>([
+    { id: makeId(), name: '', description: '', files: [] },
+  ]);
+  const [processing, setProcessing] = useState(false);
+
+  // Step 1: Preferences
   const [focusAreas, setFocusAreas] = useState<string[]>([]);
   const [customInstructions, setCustomInstructions] = useState(
     existingSettings?.custom_instructions ?? '',
   );
-  const [watchItems, setWatchItems] = useState(
-    existingSettings?.watch_items ?? '',
-  );
-  const [emailTime, setEmailTime] = useState(
-    existingSettings?.email_time ?? '07:00',
-  );
-  const [includePdf, setIncludePdf] = useState(
-    existingSettings?.include_pdf ?? true,
-  );
+  const [watchItems, setWatchItems] = useState(existingSettings?.watch_items ?? '');
+  const [emailTime, setEmailTime] = useState(existingSettings?.email_time ?? '07:00');
+  const [includePdf, setIncludePdf] = useState(existingSettings?.include_pdf ?? true);
   const [saving, setSaving] = useState(false);
-  const router = useRouter();
 
-  function toggleFocus(id: string) {
-    setFocusAreas((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+  // --------------- portfolio helpers ---------------
+
+  function addPortfolio() {
+    setPortfolios((p) => [...p, { id: makeId(), name: '', description: '', files: [] }]);
+  }
+
+  function removePortfolio(id: string) {
+    if (portfolios.length <= 1) return;
+    setPortfolios((p) => p.filter((x) => x.id !== id));
+  }
+
+  function updatePortfolio(id: string, field: 'name' | 'description', value: string) {
+    setPortfolios((p) =>
+      p.map((x) => (x.id === id ? { ...x, [field]: value } : x)),
     );
   }
 
-  async function handleContinue() {
+  function addFilesToPortfolio(id: string, fileList: FileList) {
+    const pdfs = Array.from(fileList).filter((f) => f.type === 'application/pdf');
+    if (pdfs.length === 0) {
+      toast.error('Only PDF files are supported');
+      return;
+    }
+    setPortfolios((p) =>
+      p.map((x) =>
+        x.id === id
+          ? {
+              ...x,
+              files: [
+                ...x.files,
+                ...pdfs.map((file) => ({ file, status: 'pending' as const, count: 0 })),
+              ],
+            }
+          : x,
+      ),
+    );
+  }
+
+  function removeFileFromPortfolio(portfolioId: string, fileIndex: number) {
+    setPortfolios((p) =>
+      p.map((x) =>
+        x.id === portfolioId
+          ? { ...x, files: x.files.filter((_, i) => i !== fileIndex) }
+          : x,
+      ),
+    );
+  }
+
+  // --------------- process all PDFs ---------------
+
+  async function processAllPortfolios() {
+    const portfoliosWithFiles = portfolios.filter((p) => p.files.length > 0 && p.name.trim());
+    if (portfoliosWithFiles.length === 0) {
+      toast.error('Add a name and at least one PDF to a portfolio');
+      return;
+    }
+
+    setProcessing(true);
+    let totalExtracted = 0;
+
+    for (const portfolio of portfoliosWithFiles) {
+      for (let fi = 0; fi < portfolio.files.length; fi++) {
+        if (portfolio.files[fi].status !== 'pending') continue;
+
+        setPortfolios((p) =>
+          p.map((x) =>
+            x.id === portfolio.id
+              ? {
+                  ...x,
+                  files: x.files.map((f, i) =>
+                    i === fi ? { ...f, status: 'uploading' as const } : f,
+                  ),
+                }
+              : x,
+          ),
+        );
+
+        try {
+          const formData = new FormData();
+          formData.append('file', portfolio.files[fi].file);
+          formData.append('fileName', portfolio.files[fi].file.name);
+          formData.append('portfolioName', portfolio.name.trim());
+
+          const res = await fetch('/api/setup/upload', { method: 'POST', body: formData });
+          const json = (await res.json()) as { count?: number; error?: string; details?: string };
+
+          if (!res.ok) throw new Error(json.details ?? json.error ?? 'Extraction failed');
+
+          totalExtracted += json.count ?? 0;
+
+          setPortfolios((p) =>
+            p.map((x) =>
+              x.id === portfolio.id
+                ? {
+                    ...x,
+                    files: x.files.map((f, i) =>
+                      i === fi ? { ...f, status: 'done' as const, count: json.count ?? 0 } : f,
+                    ),
+                  }
+                : x,
+            ),
+          );
+        } catch (err) {
+          setPortfolios((p) =>
+            p.map((x) =>
+              x.id === portfolio.id
+                ? {
+                    ...x,
+                    files: x.files.map((f, i) =>
+                      i === fi
+                        ? { ...f, status: 'error' as const, error: err instanceof Error ? err.message : 'Failed' }
+                        : f,
+                    ),
+                  }
+                : x,
+            ),
+          );
+        }
+      }
+    }
+
+    setProcessing(false);
+    if (totalExtracted > 0) {
+      toast.success(`Extracted ${totalExtracted} holdings`);
+    }
+  }
+
+  // --------------- save preferences ---------------
+
+  async function savePreferences() {
     setSaving(true);
 
     const focusLabels = focusAreas
@@ -76,9 +241,7 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
       .filter(Boolean);
 
     const instructions = [
-      focusLabels.length > 0
-        ? `Priority focus areas: ${focusLabels.join(', ')}.`
-        : '',
+      focusLabels.length > 0 ? `Priority focus areas: ${focusLabels.join(', ')}.` : '',
       customInstructions,
     ]
       .filter(Boolean)
@@ -96,13 +259,11 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
           include_pdf: includePdf,
         }),
       });
-
       if (!res.ok) {
         const err = (await res.json()) as { details?: string };
-        throw new Error(err.details ?? 'Failed to save preferences');
+        throw new Error(err.details ?? 'Failed to save');
       }
-
-      router.push('/setup');
+      router.push('/dashboard');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -110,205 +271,431 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
     }
   }
 
+  // --------------- derived ---------------
+
+  const totalFiles = portfolios.reduce((s, p) => s + p.files.length, 0);
+  const allDone = totalFiles > 0 && portfolios.every((p) => p.files.every((f) => f.status === 'done' || f.status === 'error'));
+  const anyPending = portfolios.some((p) => p.files.some((f) => f.status === 'pending'));
+
+  // --------------- render ---------------
+
   return (
     <div className="w-full max-w-2xl space-y-8">
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-semibold tracking-tight text-white">
-          Personalize your briefings
-        </h1>
-        <p className="text-white/30 text-sm">
-          Tell us what matters most so Claude can tailor your daily executive summary.
-        </p>
-        <p className="text-white/15 text-xs">{userEmail}</p>
+      {/* Step indicator */}
+      <div className="flex items-center justify-center gap-2">
+        {['Portfolios', 'Preferences'].map((label, i) => (
+          <div key={label} className="flex items-center gap-2">
+            {i > 0 && <div className="h-px w-8 bg-white/[0.06]" />}
+            <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs transition-colors ${
+              step === i
+                ? 'bg-white/[0.08] text-white/70'
+                : step > i
+                  ? 'text-white/30'
+                  : 'text-white/15'
+            }`}>
+              <span className={`flex size-5 items-center justify-center rounded-full text-[10px] font-medium ${
+                step > i
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : step === i
+                    ? 'bg-white/10 text-white/60'
+                    : 'bg-white/[0.04] text-white/20'
+              }`}>
+                {step > i ? '✓' : i + 1}
+              </span>
+              {label}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Focus Areas */}
-      <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
-        <CardContent className="pt-6 space-y-4">
-          <div>
-            <h2 className="text-sm font-medium text-white/60 mb-1">
-              What should your briefing focus on?
-            </h2>
-            <p className="text-xs text-white/20">
-              Select all that apply. These guide the AI's analysis priorities.
+      {step === 0 && (
+        <>
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight text-white">
+              Organize your wealth
+            </h1>
+            <p className="text-white/30 text-sm max-w-md mx-auto">
+              Add each bank, platform, or custodian as a portfolio. Upload their statements and we&apos;ll extract everything.
             </p>
+            <p className="text-white/15 text-xs">{userEmail}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {FOCUS_AREAS.map((area) => {
-              const selected = focusAreas.includes(area.id);
-              const Icon = area.icon;
-              return (
-                <button
-                  key={area.id}
-                  onClick={() => toggleFocus(area.id)}
-                  className={`flex flex-col items-start rounded-xl border p-4 text-left transition-all ${
-                    selected
-                      ? 'border-white/20 bg-white/[0.06]'
-                      : 'border-white/[0.06] hover:border-white/10 hover:bg-white/[0.02]'
-                  }`}
-                >
-                  <Icon
-                    className={`size-4 mb-2 ${
-                      selected ? 'text-white/70' : 'text-white/20'
-                    }`}
-                  />
-                  <span
-                    className={`text-sm font-medium ${
-                      selected ? 'text-white/80' : 'text-white/40'
-                    }`}
-                  >
-                    {area.label}
-                  </span>
-                  <span className="text-xs text-white/15 mt-0.5">
-                    {area.description}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Custom Instructions */}
-      <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
-        <CardContent className="pt-6 space-y-4">
-          <div>
-            <h2 className="text-sm font-medium text-white/60 mb-1">
-              Additional instructions for Claude
-            </h2>
-            <p className="text-xs text-white/20">
-              Anything specific about how you want your briefing written.
-            </p>
-          </div>
-          <textarea
-            value={customInstructions}
-            onChange={(e) => setCustomInstructions(e.target.value)}
-            placeholder="e.g. Compare performance against ASX200, write concisely, highlight positions above 10% concentration, mention upcoming dividend dates..."
-            rows={3}
-            className="w-full rounded-xl bg-white/[0.02] border border-white/[0.06] px-4 py-3 text-sm text-white/60 placeholder:text-white/15 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
-          />
-        </CardContent>
-      </Card>
-
-      {/* Watch Items */}
-      <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
-        <CardContent className="pt-6 space-y-4">
-          <div>
-            <h2 className="text-sm font-medium text-white/60 mb-1">
-              Positions or events to watch
-            </h2>
-            <p className="text-xs text-white/20">
-              Flagged in every briefing until you remove them.
-            </p>
-          </div>
-          <textarea
-            value={watchItems}
-            onChange={(e) => setWatchItems(e.target.value)}
-            placeholder="e.g. BHP nearing stop-loss at $38, monitor USD/AUD if it breaks 0.65, track PE capital call deadline Q2..."
-            rows={3}
-            className="w-full rounded-xl bg-white/[0.02] border border-white/[0.06] px-4 py-3 text-sm text-white/60 placeholder:text-white/15 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
-          />
-        </CardContent>
-      </Card>
-
-      {/* Delivery Time */}
-      <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
-        <CardContent className="pt-6 space-y-4">
-          <div className="flex items-center gap-3">
-            <Clock className="size-4 text-white/20" />
-            <div>
-              <h2 className="text-sm font-medium text-white/60">
-                When should your briefing arrive?
-              </h2>
-              <p className="text-xs text-white/20 mt-0.5">
-                Your daily executive summary will be emailed at this time (AEST)
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
-            {TIME_OPTIONS.map((t) => {
-              const selected = emailTime === t.value;
-              const hour = parseInt(t.value.split(':')[0], 10);
-              const isMorning = hour >= 5 && hour <= 9;
-              return (
-                <button
-                  key={t.value}
-                  onClick={() => setEmailTime(t.value)}
-                  className={`rounded-xl border px-2 py-2.5 text-center transition-all ${
-                    selected
-                      ? 'border-white/20 bg-white/[0.08] text-white/80'
-                      : 'border-white/[0.04] text-white/25 hover:border-white/10 hover:text-white/40 hover:bg-white/[0.02]'
-                  }`}
-                >
-                  <span className="text-sm font-medium block">{t.label}</span>
-                  {isMorning && (
-                    <span className="text-[10px] text-emerald-400/50 block mt-0.5">popular</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* PDF Toggle */}
-      <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <FileText className="size-4 text-white/20" />
-              <div>
-                <p className="text-sm text-white/50">Attach research PDF</p>
-                <p className="text-xs text-white/15 mt-0.5">
-                  Deep-dive analysis as a PDF attachment with each briefing
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setIncludePdf(!includePdf)}
-              className={`relative inline-flex h-6 w-10 items-center rounded-full transition-colors ${
-                includePdf ? 'bg-emerald-500/50' : 'bg-white/10'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  includePdf ? 'translate-x-5' : 'translate-x-1'
-                }`}
+          <div className="space-y-4">
+            {portfolios.map((portfolio, pIndex) => (
+              <PortfolioCard
+                key={portfolio.id}
+                portfolio={portfolio}
+                index={pIndex}
+                canRemove={portfolios.length > 1}
+                processing={processing}
+                onUpdate={updatePortfolio}
+                onRemove={removePortfolio}
+                onAddFiles={addFilesToPortfolio}
+                onRemoveFile={removeFileFromPortfolio}
               />
-            </button>
+            ))}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Continue */}
-      <div className="flex gap-4">
-        <Button
-          onClick={() => router.push('/setup')}
-          variant="ghost"
-          className="flex-1 border border-white/[0.06] text-white/30 hover:text-white hover:bg-white/5 h-12"
-        >
-          Skip for now
-        </Button>
-        <Button
-          onClick={handleContinue}
-          disabled={saving}
-          className="flex-1 bg-white text-black hover:bg-white/90 h-12 text-sm font-medium"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="size-4 mr-2 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            <>
-              Continue to Upload
-              <ArrowRight className="size-4 ml-2" />
-            </>
-          )}
-        </Button>
-      </div>
+          <button
+            onClick={addPortfolio}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/[0.08] py-4 text-sm text-white/25 transition-colors hover:border-white/15 hover:text-white/40 hover:bg-white/[0.02]"
+          >
+            <Plus className="size-4" />
+            Add another portfolio
+          </button>
+
+          <div className="flex gap-3">
+            {totalFiles > 0 && anyPending && (
+              <Button
+                onClick={processAllPortfolios}
+                disabled={processing}
+                className="flex-1 bg-white text-black hover:bg-white/90 h-12 text-sm font-medium"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="size-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  `Extract ${totalFiles} statement${totalFiles === 1 ? '' : 's'}`
+                )}
+              </Button>
+            )}
+
+            {(allDone || totalFiles === 0) && (
+              <Button
+                onClick={() => setStep(1)}
+                className="flex-1 bg-white text-black hover:bg-white/90 h-12 text-sm font-medium"
+              >
+                {totalFiles === 0 ? 'Skip uploads — set preferences' : 'Continue to Preferences'}
+                <ArrowRight className="size-4 ml-2" />
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+
+      {step === 1 && (
+        <>
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight text-white">
+              Personalize your briefings
+            </h1>
+            <p className="text-white/30 text-sm">
+              Tell us what matters most so Claude can tailor your daily executive summary.
+            </p>
+          </div>
+
+          {/* Focus Areas */}
+          <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h2 className="text-sm font-medium text-white/60 mb-1">
+                  What should your briefing focus on?
+                </h2>
+                <p className="text-xs text-white/20">Select all that apply.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {FOCUS_AREAS.map((area) => {
+                  const selected = focusAreas.includes(area.id);
+                  const Icon = area.icon;
+                  return (
+                    <button
+                      key={area.id}
+                      onClick={() =>
+                        setFocusAreas((prev) =>
+                          prev.includes(area.id)
+                            ? prev.filter((x) => x !== area.id)
+                            : [...prev, area.id],
+                        )
+                      }
+                      className={`flex flex-col items-start rounded-xl border p-4 text-left transition-all ${
+                        selected
+                          ? 'border-white/20 bg-white/[0.06]'
+                          : 'border-white/[0.06] hover:border-white/10 hover:bg-white/[0.02]'
+                      }`}
+                    >
+                      <Icon className={`size-4 mb-2 ${selected ? 'text-white/70' : 'text-white/20'}`} />
+                      <span className={`text-sm font-medium ${selected ? 'text-white/80' : 'text-white/40'}`}>
+                        {area.label}
+                      </span>
+                      <span className="text-xs text-white/15 mt-0.5">{area.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Custom Instructions */}
+          <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h2 className="text-sm font-medium text-white/60 mb-1">Additional instructions</h2>
+                <p className="text-xs text-white/20">Anything specific about how you want your briefing.</p>
+              </div>
+              <textarea
+                value={customInstructions}
+                onChange={(e) => setCustomInstructions(e.target.value)}
+                placeholder="e.g. Compare performance against ASX200, highlight positions above 10% concentration..."
+                rows={3}
+                className="w-full rounded-xl bg-white/[0.02] border border-white/[0.06] px-4 py-3 text-sm text-white/60 placeholder:text-white/15 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
+              />
+            </CardContent>
+          </Card>
+
+          {/* Watch Items */}
+          <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h2 className="text-sm font-medium text-white/60 mb-1">Positions to watch</h2>
+                <p className="text-xs text-white/20">Flagged in every briefing.</p>
+              </div>
+              <textarea
+                value={watchItems}
+                onChange={(e) => setWatchItems(e.target.value)}
+                placeholder="e.g. BHP nearing stop-loss at $38, monitor USD/AUD if it breaks 0.65..."
+                rows={3}
+                className="w-full rounded-xl bg-white/[0.02] border border-white/[0.06] px-4 py-3 text-sm text-white/60 placeholder:text-white/15 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
+              />
+            </CardContent>
+          </Card>
+
+          {/* Delivery Time */}
+          <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+            <CardContent className="pt-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <Clock className="size-4 text-white/20" />
+                <div>
+                  <h2 className="text-sm font-medium text-white/60">Briefing delivery time</h2>
+                  <p className="text-xs text-white/20 mt-0.5">Daily executive summary emailed at this time (AEST)</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+                {TIME_OPTIONS.map((t) => {
+                  const selected = emailTime === t.value;
+                  const hour = parseInt(t.value.split(':')[0], 10);
+                  const isMorning = hour >= 5 && hour <= 9;
+                  return (
+                    <button
+                      key={t.value}
+                      onClick={() => setEmailTime(t.value)}
+                      className={`rounded-xl border px-2 py-2.5 text-center transition-all ${
+                        selected
+                          ? 'border-white/20 bg-white/[0.08] text-white/80'
+                          : 'border-white/[0.04] text-white/25 hover:border-white/10 hover:text-white/40 hover:bg-white/[0.02]'
+                      }`}
+                    >
+                      <span className="text-sm font-medium block">{t.label}</span>
+                      {isMorning && <span className="text-[10px] text-emerald-400/50 block mt-0.5">popular</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* PDF Toggle */}
+          <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <FileText className="size-4 text-white/20" />
+                  <div>
+                    <p className="text-sm text-white/50">Attach research PDF</p>
+                    <p className="text-xs text-white/15 mt-0.5">Deep-dive analysis as a PDF attachment</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIncludePdf(!includePdf)}
+                  className={`relative inline-flex h-6 w-10 items-center rounded-full transition-colors ${
+                    includePdf ? 'bg-emerald-500/50' : 'bg-white/10'
+                  }`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    includePdf ? 'translate-x-5' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Navigation */}
+          <div className="flex gap-3">
+            <Button
+              onClick={() => setStep(0)}
+              variant="ghost"
+              className="border border-white/[0.06] text-white/30 hover:text-white hover:bg-white/5 h-12 px-6"
+            >
+              <ArrowLeft className="size-4 mr-2" />
+              Back
+            </Button>
+            <Button
+              onClick={() => router.push('/dashboard')}
+              variant="ghost"
+              className="flex-1 border border-white/[0.06] text-white/30 hover:text-white hover:bg-white/5 h-12"
+            >
+              Skip for now
+            </Button>
+            <Button
+              onClick={savePreferences}
+              disabled={saving}
+              className="flex-1 bg-white text-black hover:bg-white/90 h-12 text-sm font-medium"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  Finish Setup
+                  <ArrowRight className="size-4 ml-2" />
+                </>
+              )}
+            </Button>
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+// --------------- PortfolioCard ---------------
+
+function PortfolioCard({
+  portfolio,
+  index,
+  canRemove,
+  processing,
+  onUpdate,
+  onRemove,
+  onAddFiles,
+  onRemoveFile,
+}: {
+  portfolio: Portfolio;
+  index: number;
+  canRemove: boolean;
+  processing: boolean;
+  onUpdate: (id: string, field: 'name' | 'description', value: string) => void;
+  onRemove: (id: string) => void;
+  onAddFiles: (id: string, files: FileList) => void;
+  onRemoveFile: (portfolioId: string, fileIndex: number) => void;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <Card className="border-white/[0.06] bg-black/40 backdrop-blur-2xl">
+      <CardContent className="pt-6 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Briefcase className="size-4 text-white/20" />
+            <span className="text-xs font-medium text-white/30 uppercase tracking-wider">
+              Portfolio {index + 1}
+            </span>
+          </div>
+          {canRemove && (
+            <button
+              onClick={() => onRemove(portfolio.id)}
+              className="text-white/15 hover:text-red-400/60 transition-colors"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <Input
+            placeholder="e.g. UBS Private Banking, Macquarie Wrap, Family Trust"
+            value={portfolio.name}
+            onChange={(e) => onUpdate(portfolio.id, 'name', e.target.value)}
+            className="border-white/[0.06] bg-white/[0.03] text-white placeholder:text-white/15 focus:border-white/15 h-11"
+          />
+          <textarea
+            placeholder="Optional description — e.g. Australian equities and fixed income, managed by John Smith"
+            value={portfolio.description}
+            onChange={(e) => onUpdate(portfolio.id, 'description', e.target.value)}
+            rows={2}
+            className="w-full rounded-xl bg-white/[0.02] border border-white/[0.06] px-4 py-3 text-sm text-white/60 placeholder:text-white/15 focus:outline-none focus:ring-1 focus:ring-white/10 resize-none"
+          />
+        </div>
+
+        {/* Drop zone */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            onAddFiles(portfolio.id, e.dataTransfer.files);
+          }}
+          className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-all ${
+            dragOver
+              ? 'border-white/20 bg-white/[0.03]'
+              : 'border-white/[0.06] hover:border-white/10'
+          }`}
+        >
+          <Upload className="size-6 text-white/10 mb-3" />
+          <p className="text-xs text-white/25 mb-3">
+            Drop PDF statements for this portfolio
+          </p>
+          <label>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".pdf"
+              multiple
+              onChange={(e) => {
+                if (e.target.files) onAddFiles(portfolio.id, e.target.files);
+                e.target.value = '';
+              }}
+              className="hidden"
+            />
+            <span className="inline-flex items-center rounded-md border border-white/[0.08] px-3 py-1.5 text-xs font-medium text-white/30 hover:text-white/50 hover:bg-white/5 cursor-pointer transition-colors">
+              <FileUp className="size-3 mr-1.5" /> Browse
+            </span>
+          </label>
+        </div>
+
+        {/* File list */}
+        {portfolio.files.length > 0 && (
+          <div className="space-y-1.5">
+            {portfolio.files.map((f, i) => (
+              <div
+                key={`${f.file.name}-${i}`}
+                className="flex items-center gap-2 rounded-lg border border-white/[0.04] bg-white/[0.015] px-3 py-2"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-white/50 truncate">
+                    {f.file.name}
+                    <span className="ml-1.5 text-white/15">{formatFileSize(f.file.size)}</span>
+                  </p>
+                  <p className="text-[11px] text-white/20">
+                    {f.status === 'pending' && 'Ready'}
+                    {f.status === 'uploading' && 'Extracting with AI...'}
+                    {f.status === 'done' && `${f.count} holdings extracted`}
+                    {f.status === 'error' && (f.error ?? 'Failed')}
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  {f.status === 'pending' && !processing && (
+                    <button
+                      onClick={() => onRemoveFile(portfolio.id, i)}
+                      className="text-white/15 hover:text-white/40 transition-colors"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                  {f.status === 'uploading' && <Loader2 className="size-3.5 text-white/30 animate-spin" />}
+                  {f.status === 'done' && <CheckCircle2 className="size-3.5 text-emerald-400" />}
+                  {f.status === 'error' && <span className="text-[10px] text-red-400/60">Failed</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

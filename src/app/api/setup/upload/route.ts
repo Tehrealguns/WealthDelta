@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const file = formData.get('file') as File | null;
   const fileName = formData.get('fileName') as string | null;
+  const portfolioName = formData.get('portfolioName') as string | null;
 
   if (!file || file.type !== 'application/pdf') {
     return NextResponse.json({ error: 'Upload a PDF file' }, { status: 400 });
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
   const rows = holdings.map((item) => ({
     user_id: userData.user.id,
     asset_id: item.asset_id,
-    source: item.source,
+    source: portfolioName || item.source,
     asset_name: item.asset_name,
     asset_class: item.asset_class,
     ticker_symbol: item.ticker_symbol,

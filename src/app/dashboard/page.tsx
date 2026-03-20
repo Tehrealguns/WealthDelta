@@ -37,7 +37,7 @@ export default async function DashboardPage() {
   }
 
   if (holdings.length === 0) {
-    redirect('/setup');
+    redirect('/onboard');
   }
 
   const displayName = settingsData?.display_name
