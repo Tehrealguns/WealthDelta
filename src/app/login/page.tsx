@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import { LoginForm } from '@/components/login-form';
 import Link from 'next/link';
@@ -34,7 +35,9 @@ export default function LoginPage() {
               Sign in to your Family Office dashboard
             </p>
           </div>
-          <LoginForm />
+          <Suspense>
+            <LoginForm />
+          </Suspense>
         </div>
       </div>
     </>
