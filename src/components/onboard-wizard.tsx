@@ -247,6 +247,15 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
     }
   }
 
+  async function processPortfolioSequentially(portfolio: Portfolio) {
+    let count = 0;
+    for (let fi = 0; fi < portfolio.files.length; fi++) {
+      if (portfolio.files[fi].status !== 'pending') continue;
+      count += await processFileStream(portfolio, fi);
+    }
+    return count;
+  }
+
   async function processAllPortfolios() {
     const portfoliosWithFiles = portfolios.filter((p) => p.files.length > 0 && p.name.trim());
     if (portfoliosWithFiles.length === 0) {
@@ -255,18 +264,16 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
     }
 
     setProcessing(true);
-    let totalExtracted = 0;
 
-    for (const portfolio of portfoliosWithFiles) {
-      for (let fi = 0; fi < portfolio.files.length; fi++) {
-        if (portfolio.files[fi].status !== 'pending') continue;
-        totalExtracted += await processFileStream(portfolio, fi);
-      }
-    }
+    const results = await Promise.all(
+      portfoliosWithFiles.map((portfolio) => processPortfolioSequentially(portfolio)),
+    );
+
+    const totalExtracted = results.reduce((s, n) => s + n, 0);
 
     setProcessing(false);
     if (totalExtracted > 0) {
-      toast.success(`Extracted ${totalExtracted} holdings`);
+      toast.success(`Extracted ${totalExtracted} holdings across ${portfoliosWithFiles.length} portfolio${portfoliosWithFiles.length === 1 ? '' : 's'}`);
     }
   }
 
