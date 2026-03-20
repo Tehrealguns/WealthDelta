@@ -52,6 +52,24 @@ export function SignupForm() {
     setLoading(false);
   }
 
+  async function handleResend() {
+    setLoading(true);
+    const supabase = createClient();
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: {
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin}/auth/callback?next=/onboard`,
+      },
+    });
+    setLoading(false);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success('Confirmation email resent');
+    }
+  }
+
   if (sent) {
     return (
       <Card className="border-white/10 bg-white/[0.06] backdrop-blur-2xl">
@@ -65,14 +83,28 @@ export function SignupForm() {
           <p className="text-sm text-white/50 max-w-xs mx-auto">
             We sent a confirmation link to <span className="text-white/60">{email}</span>. Click it to activate your account.
           </p>
-          <Button
-            variant="ghost"
-            onClick={() => router.push('/login')}
-            className="text-white/30 hover:text-white hover:bg-white/5 mt-2"
-          >
-            Go to Sign In
-            <ArrowRight className="size-4 ml-1" />
-          </Button>
+          <p className="text-xs text-white/30">
+            It can take a minute to arrive. Check spam if you don't see it.
+          </p>
+          <div className="flex items-center justify-center gap-3 pt-1">
+            <Button
+              variant="ghost"
+              onClick={handleResend}
+              disabled={loading}
+              className="text-white/40 hover:text-white hover:bg-white/5"
+            >
+              {loading ? <Loader2 className="size-4 mr-1 animate-spin" /> : null}
+              Resend Email
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => router.push('/login')}
+              className="text-white/30 hover:text-white hover:bg-white/5"
+            >
+              Go to Sign In
+              <ArrowRight className="size-4 ml-1" />
+            </Button>
+          </div>
         </CardContent>
       </Card>
     );

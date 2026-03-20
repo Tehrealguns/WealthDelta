@@ -1,26 +1,14 @@
 'use client';
 
-import dynamic from 'next/dynamic';
 import { SignupForm } from '@/components/signup-form';
 import Link from 'next/link';
-
-const FallingPattern = dynamic(
-  () => import('@/components/ui/falling-pattern').then((mod) => mod.FallingPattern),
-  { ssr: false },
-);
 
 export default function SignupPage() {
   return (
     <>
-      <div className="fixed inset-0 z-0">
-        <FallingPattern
-          color="rgba(255, 255, 255, 0.15)"
-          backgroundColor="#050507"
-          duration={120}
-          blurIntensity="0.8em"
-          density={1}
-          className="h-full"
-        />
+      <div className="fixed inset-0 z-0 bg-[#050507]">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.04)_0%,transparent_50%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(255,255,255,0.03)_0%,transparent_40%)]" />
       </div>
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
         <div className="w-full max-w-md">

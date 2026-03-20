@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
 
 export function RetroGrid({
@@ -13,7 +14,7 @@ export function RetroGrid({
         'pointer-events-none absolute size-full overflow-hidden opacity-20 [perspective:200px]',
         className,
       )}
-      style={{ '--grid-angle': `${angle}deg` } as React.CSSProperties}
+      style={{ '--grid-angle': `${angle}deg` } as CSSProperties}
     >
       <div className="absolute inset-0 [transform:rotateX(var(--grid-angle))]">
         <div
