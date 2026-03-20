@@ -1,30 +1,12 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import {
-  useReactTable,
-  getCoreRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  flexRender,
-  type ColumnDef,
-  type SortingState,
-  type ColumnFiltersState,
-} from '@tanstack/react-table';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { type HoldingRow, ASSET_CLASSES } from '@/lib/types';
+import { type HoldingRow } from '@/lib/types';
 import { formatCurrency } from '@/lib/decimal';
-import { ArrowUpDown, Lock } from 'lucide-react';
+import { ChevronDown, Lock } from 'lucide-react';
 
-const PALETTE = [
+const SOURCE_PALETTE = [
   'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
   'text-blue-400 bg-blue-400/10 border-blue-400/20',
   'text-purple-400 bg-purple-400/10 border-purple-400/20',
@@ -35,236 +17,211 @@ const PALETTE = [
   'text-teal-400 bg-teal-400/10 border-teal-400/20',
 ];
 
-function sourceColor(source: string, allSources: string[]): string {
-  const idx = allSources.indexOf(source);
-  return PALETTE[idx % PALETTE.length];
-}
-
-function buildColumns(allSources: string[]): ColumnDef<HoldingRow>[] {
-  return [
-  {
-    accessorKey: 'source',
-    header: ({ column }) => (
-      <button
-        className="flex items-center gap-1 text-white/40 hover:text-white/70 transition-colors"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-      >
-        Source
-        <ArrowUpDown className="size-3" />
-      </button>
-    ),
-    cell: ({ row }) => {
-      const source = row.getValue<string>('source');
-      return (
-        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${sourceColor(source, allSources)}`}>
-          {source}
-        </span>
-      );
-    },
-  },
-  {
-    accessorKey: 'asset_name',
-    header: ({ column }) => (
-      <button
-        className="flex items-center gap-1 text-white/40 hover:text-white/70 transition-colors"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-      >
-        Asset Name
-        <ArrowUpDown className="size-3" />
-      </button>
-    ),
-    cell: ({ row }) => (
-      <span className="text-white/90">{row.getValue<string>('asset_name')}</span>
-    ),
-  },
-  {
-    accessorKey: 'asset_class',
-    header: ({ column }) => (
-      <button
-        className="flex items-center gap-1 text-white/40 hover:text-white/70 transition-colors"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-      >
-        Class
-        <ArrowUpDown className="size-3" />
-      </button>
-    ),
-    cell: ({ row }) => (
-      <span className="text-white/50">{row.getValue<string>('asset_class')}</span>
-    ),
-  },
-  {
-    accessorKey: 'ticker_symbol',
-    header: () => <span className="text-white/40">Ticker</span>,
-    cell: ({ row }) => {
-      const ticker = row.getValue<string | null>('ticker_symbol');
-      return ticker ? (
-        <span className="font-mono text-xs text-white/60">{ticker}</span>
-      ) : (
-        <span className="text-white/15">—</span>
-      );
-    },
-  },
-  {
-    accessorKey: 'valuation_base',
-    header: ({ column }) => (
-      <button
-        className="flex items-center gap-1 text-white/40 hover:text-white/70 transition-colors"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-      >
-        Valuation
-        <ArrowUpDown className="size-3" />
-      </button>
-    ),
-    cell: ({ row }) => (
-      <span className="font-mono tabular-nums text-white/90">
-        {formatCurrency(row.getValue<number>('valuation_base'))}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'valuation_date',
-    header: ({ column }) => (
-      <button
-        className="flex items-center gap-1 text-white/40 hover:text-white/70 transition-colors"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-      >
-        Date
-        <ArrowUpDown className="size-3" />
-      </button>
-    ),
-    cell: ({ row }) => (
-      <span className="text-white/40 text-sm">{row.getValue<string>('valuation_date')}</span>
-    ),
-  },
-  {
-    accessorKey: 'is_static',
-    header: () => <span className="text-white/40">Static</span>,
-    cell: ({ row }) =>
-      row.getValue<boolean>('is_static') ? (
-        <Lock className="size-3.5 text-white/25" />
-      ) : null,
-  },
-  ];
-}
+const CLASS_PALETTE: Record<string, string> = {
+  Equity: 'text-emerald-400',
+  Bond: 'text-blue-400',
+  Cash: 'text-amber-400',
+  Alternative: 'text-purple-400',
+  'Private Equity': 'text-rose-400',
+};
 
 interface HoldingsTableProps {
   data: HoldingRow[];
 }
 
+interface GroupedData {
+  source: string;
+  sourceTotal: number;
+  holdingCount: number;
+  classes: {
+    className: string;
+    classTotal: number;
+    holdings: HoldingRow[];
+  }[];
+}
+
 export function HoldingsTable({ data }: HoldingsTableProps) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [sourceFilter, setSourceFilter] = useState<string>('all');
-  const [classFilter, setClassFilter] = useState<string>('all');
-
-  const allSources = useMemo(
-    () => [...new Set(data.map((h) => h.source))].sort(),
-    [data],
-  );
-
-  const columns = useMemo(() => buildColumns(allSources), [allSources]);
-
-  const filteredData = useMemo(() => {
-    let result = data;
-    if (sourceFilter !== 'all') {
-      result = result.filter((h) => h.source === sourceFilter);
+  const grouped = useMemo<GroupedData[]>(() => {
+    const bySource = new Map<string, HoldingRow[]>();
+    for (const h of data) {
+      const existing = bySource.get(h.source) ?? [];
+      existing.push(h);
+      bySource.set(h.source, existing);
     }
-    if (classFilter !== 'all') {
-      result = result.filter((h) => h.asset_class === classFilter);
-    }
-    return result;
-  }, [data, sourceFilter, classFilter]);
 
-  const table = useReactTable({
-    data: filteredData,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    state: { sorting, columnFilters },
-  });
+    return [...bySource.entries()]
+      .map(([source, holdings]) => {
+        const byClass = new Map<string, HoldingRow[]>();
+        for (const h of holdings) {
+          const existing = byClass.get(h.asset_class) ?? [];
+          existing.push(h);
+          byClass.set(h.asset_class, existing);
+        }
+
+        const classes = [...byClass.entries()]
+          .map(([className, classHoldings]) => ({
+            className,
+            classTotal: classHoldings.reduce((s, h) => s + Number(h.valuation_base), 0),
+            holdings: classHoldings.sort((a, b) => Number(b.valuation_base) - Number(a.valuation_base)),
+          }))
+          .sort((a, b) => b.classTotal - a.classTotal);
+
+        return {
+          source,
+          sourceTotal: holdings.reduce((s, h) => s + Number(h.valuation_base), 0),
+          holdingCount: holdings.length,
+          classes,
+        };
+      })
+      .sort((a, b) => b.sourceTotal - a.sourceTotal);
+  }, [data]);
+
+  const allSources = useMemo(() => grouped.map((g) => g.source), [grouped]);
+
+  const [collapsedSources, setCollapsedSources] = useState<Set<string>>(new Set());
+  const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(new Set());
+
+  function toggleSource(source: string) {
+    setCollapsedSources((prev) => {
+      const next = new Set(prev);
+      next.has(source) ? next.delete(source) : next.add(source);
+      return next;
+    });
+  }
+
+  function toggleClass(key: string) {
+    setCollapsedClasses((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  if (data.length === 0) {
+    return (
+      <Card className="border-white/[0.06] bg-[#0a0a0a]">
+        <CardContent className="py-16 text-center text-white/20 text-sm">
+          No holdings yet. Upload statements to get started.
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="border-white/[0.06] bg-[#0a0a0a]">
       <CardHeader>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-sm font-medium text-white/40 tracking-wide uppercase">Holdings</CardTitle>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <label htmlFor="source-filter" className="text-xs text-white/30">
-                Source
-              </label>
-              <select
-                id="source-filter"
-                value={sourceFilter}
-                onChange={(e) => setSourceFilter(e.target.value)}
-                className="h-7 rounded-md border border-white/[0.06] bg-white/[0.03] px-2 text-xs text-white/70"
-              >
-                <option value="all">All</option>
-                {allSources.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <label htmlFor="class-filter" className="text-xs text-white/30">
-                Class
-              </label>
-              <select
-                id="class-filter"
-                value={classFilter}
-                onChange={(e) => setClassFilter(e.target.value)}
-                className="h-7 rounded-md border border-white/[0.06] bg-white/[0.03] px-2 text-xs text-white/70"
-              >
-                <option value="all">All</option>
-                {ASSET_CLASSES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
+        <CardTitle className="text-sm font-medium text-white/40 tracking-wide uppercase">
+          Holdings · {data.length} assets
+        </CardTitle>
       </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="border-white/[0.06] hover:bg-transparent">
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="text-white/40">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} className="border-white/[0.04] hover:bg-white/[0.02]">
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={columns.length} className="h-24 text-center text-white/20">
-                  No holdings found.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-        <div className="mt-4 text-xs text-white/20">
-          Showing {table.getRowModel().rows.length} of {data.length} holdings
-        </div>
+      <CardContent className="space-y-3">
+        {grouped.map((group) => {
+          const sourceIdx = allSources.indexOf(group.source);
+          const sourceStyle = SOURCE_PALETTE[sourceIdx % SOURCE_PALETTE.length];
+          const isSourceOpen = !collapsedSources.has(group.source);
+
+          return (
+            <div key={group.source} className="rounded-xl border border-white/[0.06] overflow-hidden">
+              {/* Source header */}
+              <button
+                onClick={() => toggleSource(group.source)}
+                className="flex w-full items-center justify-between px-4 py-3 bg-white/[0.03] hover:bg-white/[0.05] transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium ${sourceStyle}`}>
+                    {group.source}
+                  </span>
+                  <span className="text-xs text-white/30">
+                    {group.holdingCount} holding{group.holdingCount !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-sm tabular-nums text-white/70">
+                    {formatCurrency(group.sourceTotal)}
+                  </span>
+                  <ChevronDown
+                    className={`size-4 text-white/25 transition-transform duration-200 ${isSourceOpen ? '' : '-rotate-90'}`}
+                  />
+                </div>
+              </button>
+
+              {/* Asset class groups */}
+              {isSourceOpen && (
+                <div className="divide-y divide-white/[0.04]">
+                  {group.classes.map((cls) => {
+                    const classKey = `${group.source}:${cls.className}`;
+                    const isClassOpen = !collapsedClasses.has(classKey);
+                    const classColor = CLASS_PALETTE[cls.className] ?? 'text-white/50';
+
+                    return (
+                      <div key={classKey}>
+                        {/* Asset class sub-header */}
+                        <button
+                          onClick={() => toggleClass(classKey)}
+                          className="flex w-full items-center justify-between px-4 py-2.5 pl-8 bg-white/[0.015] hover:bg-white/[0.03] transition-colors"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-medium ${classColor}`}>
+                              {cls.className}
+                            </span>
+                            <span className="text-[11px] text-white/20">
+                              {cls.holdings.length}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2.5">
+                            <span className="font-mono text-xs tabular-nums text-white/50">
+                              {formatCurrency(cls.classTotal)}
+                            </span>
+                            <ChevronDown
+                              className={`size-3.5 text-white/20 transition-transform duration-200 ${isClassOpen ? '' : '-rotate-90'}`}
+                            />
+                          </div>
+                        </button>
+
+                        {/* Holdings rows */}
+                        {isClassOpen && (
+                          <div className="divide-y divide-white/[0.03]">
+                            {cls.holdings.map((h) => (
+                              <div
+                                key={h.id}
+                                className="flex items-center gap-3 px-4 py-2 pl-12 hover:bg-white/[0.02] transition-colors"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-white/80 truncate">{h.asset_name}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    {h.ticker_symbol && (
+                                      <span className="font-mono text-[11px] text-white/40">
+                                        {h.ticker_symbol}
+                                      </span>
+                                    )}
+                                    {h.quantity != null && (
+                                      <span className="text-[11px] text-white/25">
+                                        {Number(h.quantity).toLocaleString()} units
+                                      </span>
+                                    )}
+                                    {h.is_static && <Lock className="size-3 text-white/15" />}
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="font-mono text-sm tabular-nums text-white/80">
+                                    {formatCurrency(h.valuation_base)}
+                                  </p>
+                                  <p className="text-[11px] text-white/25 mt-0.5">
+                                    {h.currency} · {h.valuation_date}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </CardContent>
     </Card>
   );

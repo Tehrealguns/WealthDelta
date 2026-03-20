@@ -8,7 +8,7 @@ import { PortfolioSummaryCard } from '@/components/portfolio-summary-card';
 import { SourceBreakdownCard } from '@/components/source-breakdown-card';
 import { PortfolioChart } from '@/components/portfolio-chart';
 import { AssetDonutChart } from '@/components/asset-donut-chart';
-import { Settings, Check } from 'lucide-react';
+import { Settings, Check, ChevronDown } from 'lucide-react';
 import type { HoldingRow } from '@/lib/types';
 import { Decimal, formatCurrency } from '@/lib/decimal';
 
@@ -92,6 +92,50 @@ const dashboardFeatures = [
     className: 'lg:col-start-3 lg:col-end-4 lg:row-start-2 lg:row-end-3',
   },
 ];
+
+function CollapsibleSection({
+  title,
+  storageKey,
+  children,
+  defaultOpen = true,
+}: {
+  title: string;
+  storageKey: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(() => {
+    if (typeof window === 'undefined') return defaultOpen;
+    const saved = localStorage.getItem(`wd-section-${storageKey}`);
+    return saved !== null ? saved === 'true' : defaultOpen;
+  });
+
+  function toggle() {
+    setOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem(`wd-section-${storageKey}`, String(next));
+      return next;
+    });
+  }
+
+  return (
+    <div>
+      <button
+        onClick={toggle}
+        className="flex w-full items-center gap-2 mb-3 group"
+      >
+        <ChevronDown
+          className={`size-4 text-white/25 transition-transform duration-200 ${open ? '' : '-rotate-90'}`}
+        />
+        <span className="text-xs font-medium text-white/30 uppercase tracking-wider group-hover:text-white/50 transition-colors">
+          {title}
+        </span>
+        <div className="flex-1 h-px bg-white/[0.04]" />
+      </button>
+      {open && children}
+    </div>
+  );
+}
 
 export function DashboardContent({ holdings, userEmail, displayName, snapshotHistory }: DashboardContentProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -224,29 +268,33 @@ export function DashboardContent({ holdings, userEmail, displayName, snapshotHis
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <PortfolioSummaryCard holdings={holdings} />
-        <SourceBreakdownCard holdings={holdings} />
-      </div>
+      <CollapsibleSection title="Overview" storageKey="overview">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <PortfolioSummaryCard holdings={holdings} />
+          <SourceBreakdownCard holdings={holdings} />
+        </div>
+      </CollapsibleSection>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <PortfolioChart data={snapshotHistory} />
-        <AssetDonutChart holdings={holdings} />
-      </div>
+      <CollapsibleSection title="Charts" storageKey="charts">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <PortfolioChart data={snapshotHistory} />
+          <AssetDonutChart holdings={holdings} />
+        </div>
+      </CollapsibleSection>
 
-      {/* Bento Grid */}
-      <BentoGrid className="lg:grid-rows-2 auto-rows-[14rem]">
-        {dashboardFeatures.map((feature) => (
-          <BentoCard key={feature.name} {...feature} />
-        ))}
-      </BentoGrid>
+      <CollapsibleSection title="Quick Access" storageKey="bento">
+        <BentoGrid className="lg:grid-rows-2 auto-rows-[14rem]">
+          {dashboardFeatures.map((feature) => (
+            <BentoCard key={feature.name} {...feature} />
+          ))}
+        </BentoGrid>
+      </CollapsibleSection>
 
-      {/* Holdings Table */}
-      <div id="holdings">
-        <HoldingsTable data={holdings} />
-      </div>
+      <CollapsibleSection title="Holdings" storageKey="holdings">
+        <div id="holdings">
+          <HoldingsTable data={holdings} />
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }
