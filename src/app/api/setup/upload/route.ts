@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import type { UnifiedPortfolio } from '@/lib/types';
@@ -9,8 +9,7 @@ const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif
 
 function isImage(file: File): boolean {
   if (IMAGE_TYPES.has(file.type)) return true;
-  const name = file.name.toLowerCase();
-  return /\.(png|jpe?g|webp|gif)$/.test(name);
+  return /\.(png|jpe?g|webp|gif)$/.test(file.name.toLowerCase());
 }
 
 function isPdf(file: File): boolean {
@@ -20,7 +19,9 @@ function isPdf(file: File): boolean {
 
 const PROMPT = `You are a financial data extraction engine. Extract ALL holdings/assets from this document — it could be a bank statement, portfolio report, screenshot, spreadsheet export, or any financial document.
 
-Return ONLY a JSON array. Each object must have exactly these fields:
+First, briefly describe what you see in the document (2-3 sentences). Then output the JSON.
+
+Return the holdings as a JSON array wrapped in a \`\`\`json code fence. Each object must have exactly these fields:
 - asset_id: a unique slug (lowercase, e.g. "ubs-eq-bhp-001")
 - source: the bank/custodian/platform name as best you can determine
 - asset_name: full name of the holding
@@ -32,15 +33,21 @@ Return ONLY a JSON array. Each object must have exactly these fields:
 - currency: 3-letter currency code (e.g. "AUD", "USD")
 - is_static: true
 
-Extract EVERY holding. Include cash balances as "Cash". If you cannot extract structured data, return [].
-Return ONLY the JSON array, no markdown, no explanation.`;
+Extract EVERY holding. Include cash balances as "Cash". If you cannot extract structured data, return an empty array [].`;
+
+function sseEvent(data: Record<string, unknown>): string {
+  return `data: ${JSON.stringify(data)}\n\n`;
+}
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
   if (!userData?.user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    return new Response(sseEvent({ type: 'error', message: 'Not authenticated' }), {
+      status: 401,
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
   }
 
   const formData = await request.formData();
@@ -50,16 +57,19 @@ export async function POST(request: NextRequest) {
   const fileDescription = formData.get('description') as string | null;
 
   if (!file || file.size === 0) {
-    return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
+    return new Response(sseEvent({ type: 'error', message: 'No file uploaded' }), {
+      status: 400,
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
   }
 
   let anthropic;
   try {
     anthropic = getAnthropicClient();
   } catch (err) {
-    return NextResponse.json(
-      { error: 'AI not configured', details: err instanceof Error ? err.message : 'Set ANTHROPIC_API_KEY' },
-      { status: 500 },
+    return new Response(
+      sseEvent({ type: 'error', message: err instanceof Error ? err.message : 'AI not configured' }),
+      { status: 500, headers: { 'Content-Type': 'text/event-stream' } },
     );
   }
 
@@ -81,10 +91,9 @@ export async function POST(request: NextRequest) {
         source: { type: 'base64', media_type: 'application/pdf', data: base64 },
       });
     } else if (isImage(file)) {
-      const mediaType = file.type || 'image/png';
       contentBlocks.push({
         type: 'image',
-        source: { type: 'base64', media_type: mediaType, data: base64 },
+        source: { type: 'base64', media_type: file.type || 'image/png', data: base64 },
       });
     } else {
       const text = new TextDecoder('utf-8').decode(bytes);
@@ -94,79 +103,104 @@ export async function POST(request: NextRequest) {
       });
     }
   } catch (err) {
-    return NextResponse.json(
-      { error: 'Failed to read file', details: err instanceof Error ? err.message : 'Unknown' },
-      { status: 500 },
+    return new Response(
+      sseEvent({ type: 'error', message: err instanceof Error ? err.message : 'Failed to read file' }),
+      { status: 500, headers: { 'Content-Type': 'text/event-stream' } },
     );
   }
 
   contentBlocks.push({ type: 'text', text: fullPrompt });
 
-  let message;
-  try {
-    message = await anthropic.messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 16384,
-      messages: [{ role: 'user', content: contentBlocks }],
-    });
-  } catch (err) {
-    return NextResponse.json(
-      { error: 'AI extraction failed', details: err instanceof Error ? err.message : 'Unknown' },
-      { status: 500 },
-    );
-  }
+  const userId = userData.user.id;
 
-  const responseText = message.content
-    .filter((b) => b.type === 'text')
-    .map((b) => ('text' in b ? b.text : ''))
-    .join('');
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+      const send = (data: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(sseEvent(data)));
+      };
 
-  let holdings: UnifiedPortfolio[];
-  try {
-    const cleaned = responseText.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-    holdings = JSON.parse(cleaned) as UnifiedPortfolio[];
-    if (!Array.isArray(holdings)) throw new Error('Not an array');
-  } catch {
-    return NextResponse.json(
-      { error: 'Could not extract holdings. Try adding a description to help.', rawResponse: responseText.slice(0, 500) },
-      { status: 422 },
-    );
-  }
+      let fullText = '';
 
-  if (holdings.length === 0) {
-    return NextResponse.json({ message: 'No holdings found', holdings: [], count: 0 });
-  }
+      try {
+        const response = await anthropic.messages.create({
+          model: ANTHROPIC_MODEL,
+          max_tokens: 16384,
+          stream: true,
+          messages: [{ role: 'user', content: contentBlocks }],
+        });
 
-  const rows = holdings.map((item) => ({
-    user_id: userData.user.id,
-    asset_id: item.asset_id,
-    source: portfolioName || item.source,
-    asset_name: item.asset_name,
-    asset_class: item.asset_class,
-    ticker_symbol: item.ticker_symbol,
-    quantity: item.quantity ?? null,
-    valuation_base: item.valuation_base,
-    valuation_date: item.valuation_date,
-    currency: item.currency ?? 'AUD',
-    is_static: true,
-  }));
+        for await (const event of response) {
+          if (
+            event.type === 'content_block_delta' &&
+            'delta' in event &&
+            event.delta.type === 'text_delta'
+          ) {
+            const text = event.delta.text;
+            fullText += text;
+            send({ type: 'token', text });
+          }
+        }
+      } catch (err) {
+        send({ type: 'error', message: err instanceof Error ? err.message : 'AI extraction failed' });
+        controller.close();
+        return;
+      }
 
-  const { data, error } = await supabase
-    .from('holdings')
-    .upsert(rows, { onConflict: 'user_id,asset_id' })
-    .select();
+      let holdings: UnifiedPortfolio[];
+      try {
+        const cleaned = fullText.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+        const jsonStart = cleaned.indexOf('[');
+        const jsonEnd = cleaned.lastIndexOf(']');
+        if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON array found');
+        holdings = JSON.parse(cleaned.slice(jsonStart, jsonEnd + 1)) as UnifiedPortfolio[];
+        if (!Array.isArray(holdings)) throw new Error('Not an array');
+      } catch {
+        send({ type: 'error', message: 'Could not extract holdings. Try adding a description.' });
+        controller.close();
+        return;
+      }
 
-  if (error) {
-    return NextResponse.json(
-      { error: 'Failed to save', details: error.message },
-      { status: 500 },
-    );
-  }
+      if (holdings.length === 0) {
+        send({ type: 'done', count: 0, message: 'No holdings found' });
+        controller.close();
+        return;
+      }
 
-  return NextResponse.json({
-    message: `Extracted ${data.length} holdings`,
-    count: data.length,
-    holdings: data,
-    source: holdings[0]?.source ?? 'Unknown',
+      const rows = holdings.map((item) => ({
+        user_id: userId,
+        asset_id: item.asset_id,
+        source: portfolioName || item.source,
+        asset_name: item.asset_name,
+        asset_class: item.asset_class,
+        ticker_symbol: item.ticker_symbol,
+        quantity: item.quantity ?? null,
+        valuation_base: item.valuation_base,
+        valuation_date: item.valuation_date,
+        currency: item.currency ?? 'AUD',
+        is_static: true,
+      }));
+
+      const { data, error } = await supabase
+        .from('holdings')
+        .upsert(rows, { onConflict: 'user_id,asset_id' })
+        .select();
+
+      if (error) {
+        send({ type: 'error', message: `Failed to save: ${error.message}` });
+      } else {
+        send({ type: 'done', count: data.length, source: holdings[0]?.source ?? 'Unknown' });
+      }
+
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
   });
 }

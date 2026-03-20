@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,7 @@ interface PortfolioFile {
   status: 'pending' | 'uploading' | 'done' | 'error';
   count: number;
   error?: string;
+  streamText: string;
 }
 
 interface Portfolio {
@@ -132,7 +133,7 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
               ...x,
               files: [
                 ...x.files,
-                ...newFiles.map((file) => ({ file, description: '', status: 'pending' as const, count: 0 })),
+                ...newFiles.map((file) => ({ file, description: '', status: 'pending' as const, count: 0, streamText: '' })),
               ],
             }
           : x,
@@ -160,12 +161,96 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
     );
   }
 
-  // --------------- process all PDFs ---------------
+  // --------------- process all files ---------------
+
+  function updateFile(portfolioId: string, fileIndex: number, patch: Partial<PortfolioFile>) {
+    setPortfolios((p) =>
+      p.map((x) =>
+        x.id === portfolioId
+          ? { ...x, files: x.files.map((f, i) => (i === fileIndex ? { ...f, ...patch } : f)) }
+          : x,
+      ),
+    );
+  }
+
+  async function processFileStream(portfolio: Portfolio, fi: number) {
+    updateFile(portfolio.id, fi, { status: 'uploading', streamText: '' });
+
+    const formData = new FormData();
+    formData.append('file', portfolio.files[fi].file);
+    formData.append('fileName', portfolio.files[fi].file.name);
+    formData.append('portfolioName', portfolio.name.trim());
+    if (portfolio.files[fi].description) {
+      formData.append('description', portfolio.files[fi].description);
+    }
+
+    try {
+      const res = await fetch('/api/setup/upload', { method: 'POST', body: formData });
+
+      if (!res.body) throw new Error('No response stream');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulated = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6)) as {
+              type: string;
+              text?: string;
+              count?: number;
+              message?: string;
+            };
+
+            if (event.type === 'token' && event.text) {
+              accumulated += event.text;
+              updateFile(portfolio.id, fi, { streamText: accumulated });
+            } else if (event.type === 'done') {
+              updateFile(portfolio.id, fi, {
+                status: 'done',
+                count: event.count ?? 0,
+                streamText: accumulated,
+              });
+              return event.count ?? 0;
+            } else if (event.type === 'error') {
+              updateFile(portfolio.id, fi, {
+                status: 'error',
+                error: event.message ?? 'Failed',
+                streamText: accumulated,
+              });
+              return 0;
+            }
+          } catch {
+            // skip malformed SSE lines
+          }
+        }
+      }
+
+      updateFile(portfolio.id, fi, { status: 'error', error: 'Stream ended unexpectedly' });
+      return 0;
+    } catch (err) {
+      updateFile(portfolio.id, fi, {
+        status: 'error',
+        error: err instanceof Error ? err.message : 'Failed',
+      });
+      return 0;
+    }
+  }
 
   async function processAllPortfolios() {
     const portfoliosWithFiles = portfolios.filter((p) => p.files.length > 0 && p.name.trim());
     if (portfoliosWithFiles.length === 0) {
-      toast.error('Add a name and at least one PDF to a portfolio');
+      toast.error('Add a name and at least one file to a portfolio');
       return;
     }
 
@@ -175,64 +260,7 @@ export function OnboardWizard({ userEmail, existingSettings }: OnboardWizardProp
     for (const portfolio of portfoliosWithFiles) {
       for (let fi = 0; fi < portfolio.files.length; fi++) {
         if (portfolio.files[fi].status !== 'pending') continue;
-
-        setPortfolios((p) =>
-          p.map((x) =>
-            x.id === portfolio.id
-              ? {
-                  ...x,
-                  files: x.files.map((f, i) =>
-                    i === fi ? { ...f, status: 'uploading' as const } : f,
-                  ),
-                }
-              : x,
-          ),
-        );
-
-        try {
-          const formData = new FormData();
-          formData.append('file', portfolio.files[fi].file);
-          formData.append('fileName', portfolio.files[fi].file.name);
-          formData.append('portfolioName', portfolio.name.trim());
-          if (portfolio.files[fi].description) {
-            formData.append('description', portfolio.files[fi].description);
-          }
-
-          const res = await fetch('/api/setup/upload', { method: 'POST', body: formData });
-          const json = (await res.json()) as { count?: number; error?: string; details?: string };
-
-          if (!res.ok) throw new Error(json.details ?? json.error ?? 'Extraction failed');
-
-          totalExtracted += json.count ?? 0;
-
-          setPortfolios((p) =>
-            p.map((x) =>
-              x.id === portfolio.id
-                ? {
-                    ...x,
-                    files: x.files.map((f, i) =>
-                      i === fi ? { ...f, status: 'done' as const, count: json.count ?? 0 } : f,
-                    ),
-                  }
-                : x,
-            ),
-          );
-        } catch (err) {
-          setPortfolios((p) =>
-            p.map((x) =>
-              x.id === portfolio.id
-                ? {
-                    ...x,
-                    files: x.files.map((f, i) =>
-                      i === fi
-                        ? { ...f, status: 'error' as const, error: err instanceof Error ? err.message : 'Failed' }
-                        : f,
-                    ),
-                  }
-                : x,
-            ),
-          );
-        }
+        totalExtracted += await processFileStream(portfolio, fi);
       }
     }
 
@@ -686,7 +714,7 @@ function PortfolioCard({
                     </p>
                     <p className="text-[11px] text-white/35">
                       {f.status === 'pending' && 'Ready'}
-                      {f.status === 'uploading' && 'Extracting with AI...'}
+                      {f.status === 'uploading' && 'Claude is analyzing...'}
                       {f.status === 'done' && `${f.count} holdings extracted`}
                       {f.status === 'error' && (f.error ?? 'Failed')}
                     </p>
@@ -714,11 +742,40 @@ function PortfolioCard({
                     className="w-full rounded-md bg-white/[0.05] border border-white/[0.08] px-2.5 py-1.5 text-xs text-white/60 placeholder:text-white/25 focus:outline-none focus:ring-1 focus:ring-white/15"
                   />
                 )}
+                {(f.status === 'uploading' || f.streamText) && (
+                  <StreamPanel text={f.streamText} active={f.status === 'uploading'} />
+                )}
               </div>
             ))}
           </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// --------------- StreamPanel ---------------
+
+function StreamPanel({ text, active }: { text: string; active: boolean }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [text]);
+
+  const visibleText = text.length > 0 ? text : 'Waiting for Claude...';
+
+  return (
+    <div
+      ref={scrollRef}
+      className="max-h-40 overflow-y-auto rounded-lg bg-black/60 border border-white/[0.06] p-3 font-mono text-[11px] leading-relaxed text-white/50 whitespace-pre-wrap break-words"
+    >
+      {visibleText}
+      {active && (
+        <span className="inline-block w-1.5 h-3.5 bg-white/40 ml-0.5 animate-pulse align-text-bottom" />
+      )}
+    </div>
   );
 }
