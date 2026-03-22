@@ -36,11 +36,10 @@ const BENCHMARK_SYMBOLS: Record<string, string> = {
   'DX-Y.NYB': 'US Dollar Index',
 };
 
+// Aliases that are always safe (the raw string is never an equity ticker)
 const TICKER_ALIASES: Record<string, string> = {
   'XAU': 'GC=F',
-  'GOLD': 'GC=F',
   'XAG': 'SI=F',
-  'SILVER': 'SI=F',
   'OIL': 'CL=F',
   'WTI': 'CL=F',
   'BRENT': 'BZ=F',
@@ -67,9 +66,18 @@ const TICKER_ALIASES: Record<string, string> = {
   'DXY': 'DX-Y.NYB',
 };
 
-export function resolveSymbol(raw: string): string {
+// Aliases only applied when the holding is a commodity/alternative (not equity)
+const COMMODITY_ALIASES: Record<string, string> = {
+  'GOLD': 'GC=F',
+  'SILVER': 'SI=F',
+};
+
+export function resolveSymbol(raw: string, assetClass?: string): string {
   const upper = raw.trim().toUpperCase();
-  return TICKER_ALIASES[upper] ?? raw.trim();
+  if (TICKER_ALIASES[upper]) return TICKER_ALIASES[upper];
+  // Only resolve ambiguous commodity tickers if the holding is not an equity
+  if (assetClass !== 'Equity' && COMMODITY_ALIASES[upper]) return COMMODITY_ALIASES[upper];
+  return raw.trim();
 }
 
 export async function getQuote(symbol: string): Promise<QuoteResult> {
@@ -154,17 +162,18 @@ export async function enrichHoldings(
     ticker_symbol: string | null;
     quantity: number | null;
     valuation_base: number;
+    asset_class?: string;
   }>,
 ): Promise<EnrichedHolding[]> {
-  const tickers = holdings
-    .map((h) => h.ticker_symbol)
-    .filter((t): t is string => t != null && t.length > 0);
+  const resolvedTickers = holdings
+    .filter((h) => h.ticker_symbol != null && h.ticker_symbol.length > 0)
+    .map((h) => resolveSymbol(h.ticker_symbol!, h.asset_class));
 
-  const uniqueTickers = [...new Set(tickers.map(resolveSymbol))];
+  const uniqueTickers = [...new Set(resolvedTickers)];
   const quotes = uniqueTickers.length > 0 ? await getQuotes(uniqueTickers) : new Map();
 
   return holdings.map((h) => {
-    const resolved = h.ticker_symbol ? resolveSymbol(h.ticker_symbol) : null;
+    const resolved = h.ticker_symbol ? resolveSymbol(h.ticker_symbol, h.asset_class) : null;
     const quote = resolved ? quotes.get(resolved) : undefined;
 
     let liveValue: number | null = null;
