@@ -36,7 +36,7 @@ export async function POST() {
   for (let i = 0; i < holdings.length; i++) {
     const h = holdings[i];
     const e = enriched[i];
-    const val = toDecimal(e.live_value ?? h.valuation_base);
+    const val = toDecimal(e.live_value_aud ?? e.live_value ?? h.valuation_base);
     totalValue = totalValue.plus(val);
 
     bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);
