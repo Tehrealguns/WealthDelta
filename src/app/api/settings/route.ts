@@ -55,7 +55,32 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const body = (await request.json()) as SettingsBody;
+  let body: SettingsBody;
+  try {
+    body = (await request.json()) as SettingsBody;
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  // --- Input validation ---
+  if (body.email_time !== undefined && !/^\d{2}:\d{2}$/.test(body.email_time)) {
+    return NextResponse.json({ error: 'email_time must be in HH:MM format' }, { status: 400 });
+  }
+
+  const VALID_DAYS = new Set(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
+  if (body.email_days !== undefined) {
+    const days = body.email_days.split(',').map((d) => d.trim().toLowerCase());
+    if (days.some((d) => d && !VALID_DAYS.has(d))) {
+      return NextResponse.json({ error: 'email_days contains invalid day values' }, { status: 400 });
+    }
+  }
+
+  const MAX_TEXT_LENGTH = 2000;
+  for (const field of ['custom_instructions', 'watch_items', 'focus_areas'] as const) {
+    if (body[field] !== undefined && body[field]!.length > MAX_TEXT_LENGTH) {
+      return NextResponse.json({ error: `${field} exceeds maximum length of ${MAX_TEXT_LENGTH} characters` }, { status: 400 });
+    }
+  }
 
   const row: Record<string, unknown> = {
     user_id: userData.user.id,

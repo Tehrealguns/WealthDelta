@@ -23,7 +23,7 @@ export default async function DashboardPage() {
       .eq('user_id', userData.user.id)
       .single(),
     supabase
-      .from('snapshots')
+      .from('daily_snapshots')
       .select('snapshot_date, total_value')
       .eq('user_id', userData.user.id)
       .order('snapshot_date', { ascending: true })
