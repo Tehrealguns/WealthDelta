@@ -69,23 +69,28 @@ Structure with these sections:
 
 Write approximately 2000-3000 words. Use professional financial language.`;
 
-const AEST_OFFSET = 10;
-
-const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+function getAustralianEasternParts(): { hour: number; dayName: string } {
+  const formatter = new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Sydney',
+    hour: '2-digit',
+    weekday: 'short',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  const hour = parseInt(get('hour'), 10);
+  const dayName = get('weekday').toLowerCase().slice(0, 3);
+  return { hour, dayName };
+}
 
 function getCurrentAESTHour(): string {
-  const now = new Date();
-  const aestHour = (now.getUTCHours() + AEST_OFFSET) % 24;
-  return `${String(aestHour).padStart(2, '0')}:00`;
+  const { hour } = getAustralianEasternParts();
+  return `${String(hour).padStart(2, '0')}:00`;
 }
 
 function getCurrentAESTDay(): string {
-  const now = new Date();
-  const aestHour = now.getUTCHours() + AEST_OFFSET;
-  const dayOffset = aestHour >= 24 ? 1 : 0;
-  const aestDate = new Date(now);
-  aestDate.setUTCDate(aestDate.getUTCDate() + dayOffset);
-  return DAY_KEYS[aestDate.getUTCDay()];
+  const { dayName } = getAustralianEasternParts();
+  return dayName;
 }
 
 // Support both GET (external cron services) and POST (Vercel cron)
