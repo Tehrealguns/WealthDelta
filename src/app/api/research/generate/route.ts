@@ -56,7 +56,12 @@ export async function POST(request: NextRequest) {
   }
 
   const userId = userData.user.id;
-  const body = (await request.json()) as { focusAreas?: string };
+  let body: { focusAreas?: string };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
 
   const { data: holdings } = await supabase
     .from('holdings')

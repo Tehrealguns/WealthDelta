@@ -10,7 +10,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const body = (await request.json()) as { symbols?: string[] };
+  let body: { symbols?: string[] };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
   const symbols = body.symbols ?? [];
 
   if (symbols.length === 0) {

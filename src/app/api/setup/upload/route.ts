@@ -37,10 +37,18 @@ Return the holdings as a JSON array wrapped in a \`\`\`json code fence. Each obj
   * FX/Currency: use Yahoo format (e.g. "AUDUSD=X", "EURUSD=X")
   * null ONLY if truly unlisted (private equity, term deposits, etc.)
 - quantity: number of shares/units/ounces/coins. null for cash balances or if unavailable.
-- valuation_base: total market value as a number (no currency symbols, no commas)
+- valuation_base: the TOTAL market value of the entire position as a number (no currency symbols, no commas). This must be the full position value, NOT the per-unit price. For example, 50 ounces of gold at $2,300/oz → valuation_base = 115000, NOT 2300.
 - valuation_date: ISO date "YYYY-MM-DD" from the document. Use today if unclear.
 - currency: 3-letter currency code (e.g. "AUD", "USD")
 - is_static: true
+
+CRITICAL VALUATION RULES:
+- valuation_base is ALWAYS the TOTAL position value (quantity × per-unit price), never the per-unit price alone.
+- For commodities (gold, silver, oil): quantity = number of ounces/barrels, valuation_base = total value of all ounces/barrels combined.
+- For equities: quantity = number of shares, valuation_base = total market value of all shares.
+- For cash balances: valuation_base = the cash amount, quantity = null.
+- SANITY CHECK: If the document states a total value for a line item, use that stated total directly. Do NOT recompute it — the document's total is authoritative.
+- If quantity × per-unit price disagrees with the document's stated total, use the document's stated total for valuation_base.
 
 Extract EVERY holding. Include cash balances as asset_class "Cash". Include managed funds, ETFs, commodities, crypto, and currency positions. If you cannot extract structured data, return an empty array [].`;
 
@@ -69,6 +77,14 @@ export async function POST(request: NextRequest) {
   if (!file || file.size === 0) {
     return new Response(sseEvent({ type: 'error', message: 'No file uploaded' }), {
       status: 400,
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
+  }
+
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+  if (file.size > MAX_FILE_SIZE) {
+    return new Response(sseEvent({ type: 'error', message: 'File too large. Maximum size is 50 MB.' }), {
+      status: 413,
       headers: { 'Content-Type': 'text/event-stream' },
     });
   }

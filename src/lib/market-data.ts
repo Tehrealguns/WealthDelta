@@ -1,4 +1,5 @@
 import YahooFinance from 'yahoo-finance2';
+import { toDecimal } from '@/lib/decimal';
 
 const yf = new YahooFinance();
 
@@ -168,7 +169,7 @@ export async function enrichHoldings(
 
     let liveValue: number | null = null;
     if (quote?.price != null && h.quantity != null) {
-      liveValue = quote.price * h.quantity;
+      liveValue = toDecimal(quote.price).times(toDecimal(h.quantity)).toNumber();
     }
 
     return {

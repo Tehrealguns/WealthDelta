@@ -12,11 +12,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const body = (await request.json()) as {
-    briefingId: string;
-    content: string;
-    toEmail: string;
-  };
+  let body: { briefingId: string; content: string; toEmail: string };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
 
   const toEmail = body.toEmail || userData.user.email;
 
@@ -63,8 +64,6 @@ export async function POST(request: NextRequest) {
       {
         error: 'Failed to send email',
         details: msg,
-        smtp_configured: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
-        smtp_host: process.env.SMTP_HOST || '(not set)',
       },
       { status: 500 },
     );

@@ -79,10 +79,16 @@ Return ONLY a JSON array. Each object must have exactly these fields:
 - asset_class: one of "Equity", "Bond", "Cash", "Alternative", "Private Equity"
 - ticker_symbol: the stock/ETF ticker for the exchange (e.g. "BHP.AX" for ASX, "AAPL" for NASDAQ, "MSFT" for NYSE). Use Yahoo Finance format. null if not a listed security.
 - quantity: number of shares/units held (e.g. 1500, 250.5). null for cash balances or if not available.
-- valuation_base: total market value in the statement's base currency (no currency symbols, no commas)
+- valuation_base: the TOTAL market value of the entire position in the statement's base currency (no currency symbols, no commas). This must be the full position value, NOT the per-unit price.
 - valuation_date: ISO date "YYYY-MM-DD" from the statement date
 - currency: 3-letter currency code (e.g. "AUD", "USD", "GBP", "CHF")
 - is_static: true
+
+CRITICAL VALUATION RULES:
+- valuation_base is ALWAYS the TOTAL position value (quantity × per-unit price), never the per-unit price alone.
+- For commodities (gold, silver, oil): quantity = number of ounces/barrels, valuation_base = total value of all ounces/barrels combined.
+- For equities: quantity = number of shares, valuation_base = total market value of all shares.
+- SANITY CHECK: If the document states a total value for a line item, use that stated total directly as valuation_base. The document's total is authoritative.
 
 Important:
 - Extract EVERY holding, not just the top ones
@@ -123,15 +129,19 @@ export function getEmailParsePrompt(fromAddress: string): string {
   const emailBase = `You are a financial email parser. Extract holdings, trades, or portfolio changes from this email.
 
 Return a JSON array where each object has:
-- asset_id: unique slug (lowercase)
+- asset_id: unique slug (lowercase, e.g. "eq-bhp-ax", "cash-aud", "commodity-gold")
 - source: the bank/custodian name
 - asset_name: full name of the holding/security
-- asset_class: one of "Equity", "Bond", "Cash", "Alternative", "Private Equity"
-- ticker_symbol: stock ticker if available, otherwise null
-- valuation_base: value as a number (no currency symbols)
+- asset_class: one of "Equity", "Bond", "Cash", "Alternative", "Private Equity", "Commodity", "Cryptocurrency", "Currency"
+- ticker_symbol: stock/ETF/commodity ticker in Yahoo Finance format (e.g. "BHP.AX", "GC=F" for gold, "BTC-USD"), null if unlisted
+- quantity: number of shares/units/ounces held. null for cash balances or if unavailable.
+- valuation_base: the TOTAL market value of the entire position as a number (no currency symbols). Must be full position value, NOT per-unit price.
 - valuation_date: ISO date "YYYY-MM-DD"
+- currency: 3-letter currency code (e.g. "AUD", "USD")
 - is_static: true
 - event_type: one of "buy", "sell", "dividend", "fee", "valuation", "other"
+
+CRITICAL: valuation_base must always be the TOTAL position value. For commodities, this is quantity × price-per-unit (e.g. 50 oz gold at $2,300/oz = valuation_base of 115000).
 
 For SELL events, set valuation_base to 0.
 For DIVIDEND events, include the amount and set asset_class to "Cash".

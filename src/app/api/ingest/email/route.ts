@@ -7,11 +7,9 @@ import type { UnifiedPortfolio } from '@/lib/types';
 const INGEST_SECRET = process.env.INGEST_WEBHOOK_SECRET;
 
 export async function POST(request: NextRequest) {
-  if (INGEST_SECRET) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${INGEST_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  const authHeader = request.headers.get('authorization');
+  if (!INGEST_SECRET || authHeader !== `Bearer ${INGEST_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -35,7 +33,7 @@ export async function POST(request: NextRequest) {
     textBody = (formData.get('text') as string) ?? (formData.get('html') as string) ?? '';
     messageId = (formData.get('Message-ID') as string) ?? (formData.get('message-id') as string) ?? `${Date.now()}`;
 
-    const attachmentCount = parseInt((formData.get('attachments') as string) ?? '0', 10);
+    const attachmentCount = Math.min(parseInt((formData.get('attachments') as string) ?? '0', 10) || 0, 10);
     for (let i = 1; i <= Math.max(attachmentCount, 3); i++) {
       const file = formData.get(`attachment${i}`) as File | null;
       if (file && file.type === 'application/pdf') {
@@ -46,7 +44,12 @@ export async function POST(request: NextRequest) {
       }
     }
   } else {
-    const body = await request.json() as Record<string, string>;
+    let body: Record<string, string>;
+    try {
+      body = await request.json() as Record<string, string>;
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
     toAddress = body.to ?? '';
     fromAddress = body.from ?? '';
     subject = body.subject ?? '';

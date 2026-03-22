@@ -30,6 +30,13 @@ ACCURACY REQUIREMENTS:
 - When calculating portfolio impact, show your math briefly.
 - If data is missing or stale, say so explicitly. Never fill gaps with assumptions.
 
+CRITICAL — TOTAL VALUE vs PER-UNIT PRICE:
+- Each holding's "Total Value" is the TOTAL position value (already quantity × price). Use it directly.
+- Each holding's "Live Total" (if present) is the up-to-date total position value (quantity × current market price). Use it in preference to Total Value.
+- NEVER re-multiply quantity × benchmark price to compute a holding's value. The totals are pre-calculated and authoritative.
+- For commodities (gold, silver, oil): the Total Value already accounts for the number of ounces/barrels. Do NOT multiply again by the benchmark price — this causes double-counting.
+- Example: If gold shows "Qty: 50 | Total Value: $115,000 | Live Total: $117,500", report the Live Total ($117,500). Do NOT compute 50 × gold benchmark price separately.
+
 Structure your response with these sections:
 
 PORTFOLIO SUMMARY
@@ -83,7 +90,7 @@ function getCurrentAESTDay(): string {
 
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
-  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -234,13 +241,13 @@ ${Object.entries(breakdown.by_source).map(([s, v]) => `  ${s}: ${formatCurrency(
 BREAKDOWN BY ASSET CLASS:
 ${Object.entries(breakdown.by_class).map(([c, v]) => `  ${c}: ${formatCurrency(v)}`).join('\n')}
 
-HOLDINGS:
+HOLDINGS (NOTE: "Total Value" and "Live Total" below are TOTAL position values, not per-unit prices. Use them directly — do NOT re-multiply quantity × price):
 ${holdings.map((h) => {
   const e = enriched.find((x) => x.asset_id === h.asset_id);
-  const qty = h.quantity != null ? ` | ${h.quantity} units` : '';
-  const live = e?.live_value != null ? ` | Live: ${formatCurrency(e.live_value)}` : '';
+  const qty = h.quantity != null ? ` | Qty: ${h.quantity}` : '';
+  const live = e?.live_value != null ? ` | Live Total: ${formatCurrency(e.live_value)}` : '';
   const ccy = h.currency && h.currency !== 'AUD' ? ` (${h.currency})` : '';
-  return `  ${h.asset_name} (${h.source}, ${h.asset_class}): ${formatCurrency(h.valuation_base)}${ccy}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}`;
+  return `  ${h.asset_name} | Source: ${h.source} | Class: ${h.asset_class} | Total Value: ${formatCurrency(h.valuation_base)}${ccy}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}`;
 }).join('\n')}
 ${marketContext}
 ${benchmarkContext}

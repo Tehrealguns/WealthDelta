@@ -27,6 +27,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+  if (file.size > MAX_FILE_SIZE) {
+    return NextResponse.json(
+      { error: 'File too large', details: 'Maximum file size is 50 MB.' },
+      { status: 413 },
+    );
+  }
+
   const bytes = await file.arrayBuffer();
   const base64 = Buffer.from(bytes).toString('base64');
 
