@@ -88,7 +88,16 @@ function getCurrentAESTDay(): string {
   return DAY_KEYS[aestDate.getUTCDay()];
 }
 
+// Support both GET (external cron services) and POST (Vercel cron)
+export async function GET(request: NextRequest) {
+  return handleCron(request);
+}
+
 export async function POST(request: NextRequest) {
+  return handleCron(request);
+}
+
+async function handleCron(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

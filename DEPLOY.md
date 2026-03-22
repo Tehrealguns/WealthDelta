@@ -25,7 +25,7 @@
    GET https://your-app.up.railway.app/api/cron/daily-briefing
    Authorization: Bearer <CRON_SECRET>
    ```
-   Schedule at 6:00 UTC (or your preferred time).
+   **Schedule it to run every hour** (`0 * * * *`). The endpoint automatically matches users based on their configured `email_time` and `email_days` settings — it will only send emails to users whose preferred time matches the current AEST hour.
 
 6. **SendGrid (optional):** If you use SendGrid Inbound Parse for vault email, set the webhook URL to `https://your-app.up.railway.app/api/ingest/email` and send the same `Authorization: Bearer <INGEST_WEBHOOK_SECRET>` header if your provider supports it (or use the query/auth method your provider offers).
 
