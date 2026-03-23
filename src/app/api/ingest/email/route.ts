@@ -172,8 +172,10 @@ export async function POST(request: NextRequest) {
       asset_name: h.asset_name,
       asset_class: h.asset_class,
       ticker_symbol: h.ticker_symbol,
+      quantity: h.quantity ?? null,
       valuation_base: h.valuation_base,
       valuation_date: h.valuation_date,
+      currency: h.currency ?? 'AUD',
       is_static: true,
     }));
 

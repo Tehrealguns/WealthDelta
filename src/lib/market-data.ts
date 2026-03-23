@@ -158,6 +158,7 @@ export interface EnrichedHolding {
   day_change: number | null;
   day_change_pct: number | null;
   price_currency: string | null;
+  fx_rate_to_aud: number | null;
   stale: boolean;
 }
 
@@ -168,6 +169,10 @@ const FX_PAIRS: Record<string, string> = {
   'GBP': 'GBPUSD=X',   // 1 GBP = X USD
   'CHF': 'USDCHF=X',   // 1 USD = X CHF
   'JPY': 'USDJPY=X',   // 1 USD = X JPY
+  'HKD': 'USDHKD=X',   // 1 USD = X HKD
+  'SGD': 'USDSGD=X',   // 1 USD = X SGD
+  'NZD': 'NZDUSD=X',   // 1 NZD = X USD
+  'CAD': 'USDCAD=X',   // 1 USD = X CAD
 };
 
 async function getFxRateToAUD(currency: string): Promise<number | null> {
@@ -191,20 +196,12 @@ async function getFxRateToAUD(currency: string): Promise<number | null> {
   const fxRate = fxQuote?.price;
   if (!fxRate) return null;
 
-  if (currency === 'EUR' || currency === 'GBP') {
-    // These pairs are XXXUSD (1 EUR/GBP = X USD), so multiply by fxRate to get USD, then convert to AUD
+  if (currency === 'EUR' || currency === 'GBP' || currency === 'NZD') {
+    // These pairs are XXXUSD (1 EUR/GBP/NZD = X USD), so multiply by fxRate to get USD, then convert to AUD
     return fxRate / audUsd;
   }
-  if (currency === 'CHF') {
-    // USDCHF: 1 USD = X CHF → 1 CHF = 1/X USD
-    return (1 / fxRate) / audUsd;
-  }
-  if (currency === 'JPY') {
-    // USDJPY: 1 USD = X JPY → 1 JPY = 1/X USD
-    return (1 / fxRate) / audUsd;
-  }
-
-  return null;
+  // All other pairs are USDXXX (1 USD = X foreign), so 1 foreign = 1/X USD
+  return (1 / fxRate) / audUsd;
 }
 
 export async function enrichHoldings(
@@ -214,6 +211,7 @@ export async function enrichHoldings(
     quantity: number | null;
     valuation_base: number;
     asset_class?: string;
+    currency?: string;
   }>,
 ): Promise<EnrichedHolding[]> {
   const resolvedTickers = holdings
@@ -245,13 +243,19 @@ export async function enrichHoldings(
 
     let liveValue: number | null = null;
     let liveValueAud: number | null = null;
+    const priceCcy = quote?.currency ?? null;
+    let fxRate: number | null = null;
+
     if (quote?.price != null && h.quantity != null) {
       liveValue = toDecimal(quote.price).times(toDecimal(h.quantity)).toNumber();
       const ccy = quote.currency ?? 'AUD';
-      const fxRate = fxRates.get(ccy);
-      liveValueAud = fxRate != null
-        ? toDecimal(liveValue).times(toDecimal(fxRate)).toNumber()
-        : liveValue; // fallback: assume same currency if no FX rate
+      const rate = fxRates.get(ccy);
+      if (rate != null) {
+        fxRate = rate;
+        liveValueAud = toDecimal(liveValue).times(toDecimal(rate)).toNumber();
+      } else {
+        liveValueAud = liveValue; // fallback: assume same currency if no FX rate
+      }
     }
 
     return {
@@ -264,7 +268,8 @@ export async function enrichHoldings(
       live_value_aud: liveValueAud,
       day_change: quote?.change ?? null,
       day_change_pct: quote?.changePct ?? null,
-      price_currency: quote?.currency ?? null,
+      price_currency: priceCcy,
+      fx_rate_to_aud: fxRate,
       stale: quote?.price == null,
     };
   });
@@ -315,14 +320,31 @@ export function buildMarketContext(enriched: EnrichedHolding[]): string {
   const withPrices = enriched.filter((e) => e.live_price != null);
   if (withPrices.length === 0) return '';
 
-  const lines = withPrices.map((e) => {
-    const liveVal = e.live_value != null ? `$${e.live_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A';
-    const chg = e.day_change != null ? `${e.day_change >= 0 ? '+' : ''}$${e.day_change.toFixed(2)}` : '';
-    const chgPct = e.day_change_pct != null ? `(${e.day_change_pct >= 0 ? '+' : ''}${e.day_change_pct.toFixed(2)}%)` : '';
-    const qty = e.quantity != null ? `${e.quantity} units @ $${e.live_price!.toFixed(2)}` : '';
-
-    return `  ${e.ticker_symbol}: ${qty} = ${liveVal} ${chg} ${chgPct}`.trim();
+  // De-duplicate by ticker (same ticker may appear multiple times)
+  const seen = new Set<string>();
+  const unique = withPrices.filter((e) => {
+    if (!e.ticker_symbol || seen.has(e.ticker_symbol)) return false;
+    seen.add(e.ticker_symbol);
+    return true;
   });
 
-  return `\nLIVE MARKET DATA (portfolio holdings):\n${lines.join('\n')}`;
+  const lines = unique.map((e) => {
+    const ccy = e.price_currency || '???';
+    const chg = e.day_change != null ? `${e.day_change >= 0 ? '+' : ''}${e.day_change.toFixed(2)}` : '';
+    const chgPct = e.day_change_pct != null ? `(${e.day_change_pct >= 0 ? '+' : ''}${e.day_change_pct.toFixed(2)}%)` : '';
+
+    let detail: string;
+    if (e.quantity != null && e.live_value != null) {
+      detail = `${e.quantity} units @ ${ccy} ${e.live_price!.toFixed(2)} = ${ccy} ${e.live_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      if (e.live_value_aud != null && ccy !== 'AUD') {
+        detail += ` (AUD ${e.live_value_aud.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @ fx ${e.fx_rate_to_aud?.toFixed(4)})`;
+      }
+    } else {
+      detail = `price: ${ccy} ${e.live_price!.toFixed(2)} (quantity not available, using base valuation)`;
+    }
+
+    return `  ${e.ticker_symbol} [${ccy}]: ${detail} | day: ${chg} ${chgPct}`.trim();
+  });
+
+  return `\nLIVE MARKET DATA (portfolio holdings with currency):\n${lines.join('\n')}`;
 }

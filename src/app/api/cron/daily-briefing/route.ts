@@ -19,16 +19,22 @@ FORMATTING RULES (strict):
 - Do NOT use emojis or symbols like 🔴 🟡 ⚠️. Use words instead.
 - Use simple section headers on their own line like "PORTFOLIO SUMMARY" or "KEY MOVERS".
 - Use plain dashes for lists. Keep formatting minimal and email-friendly.
-- Numbers should use proper currency formatting (e.g. $4,433,235).
+- Numbers should use proper currency formatting with currency label (e.g. A$4,433,235 or US$1,250,000).
+
+BASE CURRENCY AND UNITS (strict):
+- BASE CURRENCY: AUD (Australian Dollar). ALL portfolio totals, breakdowns, and aggregated values MUST be reported in AUD. Prefix AUD values with "A$".
+- When referencing non-AUD prices, always show both the original currency AND the AUD equivalent. Example: "US$248.00 (A$359.42 at 0.6900)".
+- COMMODITY UNITS: Gold (GC=F) and Silver (SI=F) prices are per troy ounce. Oil (CL=F, BZ=F) prices are per barrel. Always state the unit.
+- FX RATES: Use ONLY the exact rates from the "GLOBAL BENCHMARKS" section. Do NOT estimate or assume exchange rates.
+- CRYPTO: Bitcoin (BTC) and Ethereum (ETH) are quoted in USD. Convert to AUD using the AUD/USD rate provided.
 
 ACCURACY REQUIREMENTS:
 - Every number you report MUST come directly from the data provided. Never estimate or hallucinate prices.
-- For commodities (gold, silver, oil), use the exact benchmark prices provided under "GLOBAL BENCHMARKS".
-- For crypto (BTC, ETH), use the exact prices provided. Report in USD.
-- For currencies/FX pairs, use the exact rates provided. State the direction clearly (e.g. "AUD weakened to 0.6432 against USD").
-- For equities, use the live prices from "LIVE MARKET DATA". If a holding has no live price, state the last known valuation and flag it as stale.
-- When calculating portfolio impact, show your math briefly.
+- For every calculated value, briefly show your formula. Example: "AAPL: 2,000 units x US$248.00 = US$496,000 / 0.6900 = A$718,841".
+- Do NOT invent quantities, prices, or exchange rates. If a value is not in the data, say "not available".
+- If a holding has no live price or no quantity, use the base valuation provided and note it as "last reported value (not live)".
 - If data is missing or stale, say so explicitly. Never fill gaps with assumptions.
+- When calculating daily change impact on a holding, use: base_valuation x day_change_pct. Show this calculation.
 
 CRITICAL — TOTAL VALUE vs PER-UNIT PRICE:
 - Each holding's "Total Value" is the TOTAL position value (already quantity × price). Use it directly.
@@ -40,13 +46,13 @@ CRITICAL — TOTAL VALUE vs PER-UNIT PRICE:
 Structure your response with these sections:
 
 PORTFOLIO SUMMARY
-Total value, daily change amount and percentage.
+Total value in AUD, daily change amount and percentage. State the AUD/USD rate used.
 
 KEY MOVERS
-Top 3-5 holdings that drove the change, with context on WHY they moved.
+Top 3-5 holdings that drove the change, with context on WHY they moved. Show calculations.
 
 MARKET CONTEXT
-Gold, oil, crypto, FX, and index movements that matter to this portfolio.
+Gold (per troy oz), oil (per barrel), crypto, FX, and index movements that matter to this portfolio.
 
 RISK FLAGS
 Concentration risks, unusual movements, currency exposure, items to watch.
@@ -194,6 +200,7 @@ async function handleCron(request: NextRequest) {
       for (let i = 0; i < holdings.length; i++) {
         const h = holdings[i];
         const e = enriched[i];
+        // Prefer FX-converted AUD value, fall back to raw live value, then base valuation
         const val = toDecimal(e.live_value_aud ?? e.live_value ?? h.valuation_base);
         totalValue = totalValue.plus(val);
         bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);
@@ -244,29 +251,34 @@ async function handleCron(request: NextRequest) {
       // --- Build portfolio context with live market data + benchmarks ---
       const marketContext = buildMarketContext(enriched);
       const benchmarkContext = await fetchBenchmarks(userSettings.watch_items || '');
+
+      const holdingLines = holdings.map((h) => {
+        const e = enriched.find((x) => x.asset_id === h.asset_id);
+        const qty = h.quantity != null ? ` | Qty: ${h.quantity}` : '';
+        const ccy = h.currency && h.currency !== 'AUD' ? ` (${h.currency})` : '';
+        const liveCcy = e?.price_currency && e.price_currency !== 'AUD' ? ` ${e.price_currency}` : '';
+        const live = e?.live_value != null ? ` | Live Total: ${formatCurrency(e.live_value)}${liveCcy}` : '';
+        const liveAud = e?.live_value_aud != null && e?.price_currency && e.price_currency !== 'AUD'
+          ? ` (A$${e.live_value_aud.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @ fx ${e.fx_rate_to_aud?.toFixed(4)})`
+          : '';
+        return `  ${h.asset_name} | Source: ${h.source} | Class: ${h.asset_class} | Total Value: ${formatCurrency(h.valuation_base)}${ccy}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}${liveAud}`;
+      });
+
       const portfolioContext = `
+BASE CURRENCY: AUD (Australian Dollar). All totals are in AUD.
+
 CURRENT PORTFOLIO (${today}):
-Total Value: ${formatCurrency(totalValue.toNumber())}
+Total Value (AUD): ${formatCurrency(totalValue.toNumber())}
 ${deltaValue != null ? `Daily Change: ${formatCurrency(deltaValue)} (${deltaPct?.toFixed(2)}%)` : 'No previous snapshot for comparison.'}
 
-BREAKDOWN BY SOURCE:
+BREAKDOWN BY SOURCE (AUD):
 ${Object.entries(breakdown.by_source).map(([s, v]) => `  ${s}: ${formatCurrency(v)}`).join('\n')}
 
-BREAKDOWN BY ASSET CLASS:
+BREAKDOWN BY ASSET CLASS (AUD):
 ${Object.entries(breakdown.by_class).map(([c, v]) => `  ${c}: ${formatCurrency(v)}`).join('\n')}
 
 HOLDINGS (NOTE: "Total Value" and "Live Total" below are TOTAL position values, not per-unit prices. Use them directly — do NOT re-multiply quantity × price):
-${holdings.map((h) => {
-  const e = enriched.find((x) => x.asset_id === h.asset_id);
-  const qty = h.quantity != null ? ` | Qty: ${h.quantity}` : '';
-  const liveCcy = e?.price_currency && e.price_currency !== 'AUD' ? ` ${e.price_currency}` : '';
-  const live = e?.live_value != null ? ` | Live Total: ${formatCurrency(e.live_value)}${liveCcy}` : '';
-  const liveAud = e?.live_value_aud != null && e?.price_currency && e.price_currency !== 'AUD'
-    ? ` (A$${e.live_value_aud.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
-    : '';
-  const ccy = h.currency && h.currency !== 'AUD' ? ` (${h.currency})` : '';
-  return `  ${h.asset_name} | Source: ${h.source} | Class: ${h.asset_class} | Total Value: ${formatCurrency(h.valuation_base)}${ccy}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}${liveAud}`;
-}).join('\n')}
+${holdingLines.join('\n')}
 ${marketContext}
 ${benchmarkContext}
 `;
