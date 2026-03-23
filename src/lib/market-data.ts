@@ -105,7 +105,8 @@ export async function getQuote(symbol: string): Promise<QuoteResult> {
 
     quoteCache.set(resolved, { data: quote, expiry: Date.now() + CACHE_TTL });
     return quote;
-  } catch {
+  } catch (err) {
+    console.error(`[market-data] getQuote failed for "${resolved}":`, err instanceof Error ? err.message : err);
     return {
       symbol: resolved,
       price: null,
@@ -181,7 +182,10 @@ async function getFxRateToAUD(currency: string): Promise<number | null> {
   // Get AUD/USD rate first
   const audUsdQuote = await getQuote('AUDUSD=X');
   const audUsd = audUsdQuote?.price;
-  if (!audUsd) return null;
+  if (!audUsd) {
+    console.error(`[market-data] getFxRateToAUD: AUDUSD=X quote failed, cannot convert ${currency}`);
+    return null;
+  }
 
   if (currency === 'USD') {
     // USD → AUD: divide by AUDUSD rate (e.g., $100 USD / 0.70 = A$142.86)
@@ -219,7 +223,11 @@ export async function enrichHoldings(
     .map((h) => resolveSymbol(h.ticker_symbol!, h.asset_class));
 
   const uniqueTickers = [...new Set(resolvedTickers)];
+  console.log(`[market-data] enrichHoldings: ${holdings.length} holdings, ${uniqueTickers.length} unique tickers to fetch`);
   const quotes = uniqueTickers.length > 0 ? await getQuotes(uniqueTickers) : new Map();
+  const gotPrices = [...quotes.values()].filter(q => q.price != null).length;
+  const failed = [...quotes.values()].filter(q => q.price == null).length;
+  console.log(`[market-data] enrichHoldings: ${gotPrices} quotes succeeded, ${failed} failed`);
 
   // Pre-fetch FX rates for any non-AUD price currencies
   const priceCurrencies = new Set<string>();
@@ -285,7 +293,11 @@ export async function fetchBenchmarks(watchItems?: string): Promise<string> {
     }
   }
 
-  const quotes = await getQuotes([...symbols]);
+  const allSymbols = [...symbols];
+  console.log(`[market-data] fetchBenchmarks: fetching ${allSymbols.length} benchmark symbols`);
+  const quotes = await getQuotes(allSymbols);
+  const benchGot = [...quotes.values()].filter(q => q.price != null).length;
+  console.log(`[market-data] fetchBenchmarks: ${benchGot}/${allSymbols.length} benchmarks returned prices`);
   const lines: string[] = [];
 
   for (const [sym, label] of Object.entries(BENCHMARK_SYMBOLS)) {
