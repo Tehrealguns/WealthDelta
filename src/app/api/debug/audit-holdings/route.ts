@@ -185,8 +185,8 @@ Be thorough. Show ALL your math. Do not skip any holding with a live price.`;
     });
 
     const auditText = response.content
-      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-      .map((b) => b.text)
+      .filter((b) => b.type === 'text')
+      .map((b) => 'text' in b ? b.text : '')
       .join('\n');
 
     addLog(auditText);
