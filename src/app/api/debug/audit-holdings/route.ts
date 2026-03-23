@@ -8,9 +8,9 @@ import type { HoldingRow } from '@/lib/types';
 const CRON_SECRET = process.env.CRON_SECRET;
 
 export async function GET(request: NextRequest) {
-  // Auth: require CRON_SECRET as bearer token
+  // Auth: require CRON_SECRET as bearer token or query param
   const authHeader = request.headers.get('authorization');
-  const token = authHeader?.replace('Bearer ', '');
+  const token = authHeader?.replace('Bearer ', '') || request.nextUrl.searchParams.get('secret');
   if (!CRON_SECRET || token !== CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
