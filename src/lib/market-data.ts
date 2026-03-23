@@ -1,7 +1,11 @@
-import YahooFinance from 'yahoo-finance2';
 import { toDecimal } from '@/lib/decimal';
 
-const yf = new YahooFinance();
+// Direct Yahoo Finance HTTP API (bypasses yahoo-finance2 library which gets blocked on cloud IPs)
+const YF_BASE = 'https://query1.finance.yahoo.com';
+const YF_HEADERS: Record<string, string> = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+};
 
 export interface QuoteResult {
   symbol: string;
@@ -89,34 +93,46 @@ export async function getQuote(symbol: string): Promise<QuoteResult> {
   const cached = quoteCache.get(resolved);
   if (cached && Date.now() < cached.expiry) return cached.data;
 
+  const empty: QuoteResult = {
+    symbol: resolved, price: null, previousClose: null,
+    change: null, changePct: null, currency: null, name: null, marketState: null,
+  };
+
   try {
-    const result = await yf.quote(resolved);
+    const url = `${YF_BASE}/v8/finance/chart/${encodeURIComponent(resolved)}?range=2d&interval=1d`;
+    const res = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(10_000) });
+
+    if (!res.ok) {
+      console.error(`[market-data] getQuote HTTP ${res.status} for "${resolved}"`);
+      return empty;
+    }
+
+    const json = await res.json();
+    const result = json?.chart?.result?.[0];
+    if (!result) return empty;
+
+    const meta = result.meta;
+    const closes = result.indicators?.quote?.[0]?.close;
+    const currentPrice = meta?.regularMarketPrice ?? null;
+    const prevClose = meta?.chartPreviousClose ?? (closes && closes.length >= 2 ? closes[closes.length - 2] : null);
 
     const quote: QuoteResult = {
       symbol: resolved,
-      price: result.regularMarketPrice ?? null,
-      previousClose: result.regularMarketPreviousClose ?? null,
-      change: result.regularMarketChange ?? null,
-      changePct: result.regularMarketChangePercent ?? null,
-      currency: result.currency ?? null,
-      name: result.shortName ?? result.longName ?? null,
-      marketState: result.marketState ?? null,
+      price: currentPrice,
+      previousClose: prevClose,
+      change: currentPrice != null && prevClose != null ? currentPrice - prevClose : null,
+      changePct: currentPrice != null && prevClose != null && prevClose !== 0
+        ? ((currentPrice - prevClose) / prevClose) * 100 : null,
+      currency: meta?.currency ?? null,
+      name: meta?.shortName ?? meta?.longName ?? null,
+      marketState: meta?.marketState ?? null,
     };
 
     quoteCache.set(resolved, { data: quote, expiry: Date.now() + CACHE_TTL });
     return quote;
   } catch (err) {
     console.error(`[market-data] getQuote failed for "${resolved}":`, err instanceof Error ? err.message : err);
-    return {
-      symbol: resolved,
-      price: null,
-      previousClose: null,
-      change: null,
-      changePct: null,
-      currency: null,
-      name: null,
-      marketState: null,
-    };
+    return empty;
   }
 }
 
