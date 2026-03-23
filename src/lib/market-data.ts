@@ -36,11 +36,10 @@ const BENCHMARK_SYMBOLS: Record<string, string> = {
   'DX-Y.NYB': 'US Dollar Index',
 };
 
+// Aliases that are always safe (the raw string is never an equity ticker)
 const TICKER_ALIASES: Record<string, string> = {
   'XAU': 'GC=F',
-  'GOLD': 'GC=F',
   'XAG': 'SI=F',
-  'SILVER': 'SI=F',
   'OIL': 'CL=F',
   'WTI': 'CL=F',
   'BRENT': 'BZ=F',
@@ -67,9 +66,22 @@ const TICKER_ALIASES: Record<string, string> = {
   'DXY': 'DX-Y.NYB',
 };
 
-export function resolveSymbol(raw: string): string {
+// Aliases only applied when the holding is a commodity/alternative (not equity)
+const COMMODITY_ALIASES: Record<string, string> = {
+  'GOLD': 'GC=F',
+  'SILVER': 'SI=F',
+};
+
+const COMMODITY_ASSET_CLASSES = new Set(['Commodity', 'Alternative']);
+
+export function resolveSymbol(raw: string, assetClass?: string): string {
   const upper = raw.trim().toUpperCase();
-  return TICKER_ALIASES[upper] ?? raw.trim();
+  if (TICKER_ALIASES[upper]) return TICKER_ALIASES[upper];
+  // Only resolve ambiguous commodity tickers when explicitly marked as commodity/alternative
+  if (assetClass && COMMODITY_ASSET_CLASSES.has(assetClass) && COMMODITY_ALIASES[upper]) {
+    return COMMODITY_ALIASES[upper];
+  }
+  return raw.trim();
 }
 
 export async function getQuote(symbol: string): Promise<QuoteResult> {
@@ -142,10 +154,57 @@ export interface EnrichedHolding {
   valuation_base: number;
   live_price: number | null;
   live_value: number | null;
+  live_value_aud: number | null;
   day_change: number | null;
   day_change_pct: number | null;
   price_currency: string | null;
   stale: boolean;
+}
+
+// FX pairs relative to USD (Yahoo returns "1 base = X USD" for pairs like AUDUSD=X)
+const FX_PAIRS: Record<string, string> = {
+  'USD': 'AUDUSD=X',   // 1 AUD = X USD → to convert USD→AUD: divide by rate
+  'EUR': 'EURUSD=X',   // 1 EUR = X USD
+  'GBP': 'GBPUSD=X',   // 1 GBP = X USD
+  'CHF': 'USDCHF=X',   // 1 USD = X CHF
+  'JPY': 'USDJPY=X',   // 1 USD = X JPY
+};
+
+async function getFxRateToAUD(currency: string): Promise<number | null> {
+  if (currency === 'AUD') return 1;
+
+  // Get AUD/USD rate first
+  const audUsdQuote = await getQuote('AUDUSD=X');
+  const audUsd = audUsdQuote?.price;
+  if (!audUsd) return null;
+
+  if (currency === 'USD') {
+    // USD → AUD: divide by AUDUSD rate (e.g., $100 USD / 0.70 = A$142.86)
+    return 1 / audUsd;
+  }
+
+  // For other currencies, convert via USD
+  const pairSymbol = FX_PAIRS[currency];
+  if (!pairSymbol) return null;
+
+  const fxQuote = await getQuote(pairSymbol);
+  const fxRate = fxQuote?.price;
+  if (!fxRate) return null;
+
+  if (currency === 'EUR' || currency === 'GBP') {
+    // These pairs are XXXUSD (1 EUR/GBP = X USD), so multiply by fxRate to get USD, then convert to AUD
+    return fxRate / audUsd;
+  }
+  if (currency === 'CHF') {
+    // USDCHF: 1 USD = X CHF → 1 CHF = 1/X USD
+    return (1 / fxRate) / audUsd;
+  }
+  if (currency === 'JPY') {
+    // USDJPY: 1 USD = X JPY → 1 JPY = 1/X USD
+    return (1 / fxRate) / audUsd;
+  }
+
+  return null;
 }
 
 export async function enrichHoldings(
@@ -154,22 +213,45 @@ export async function enrichHoldings(
     ticker_symbol: string | null;
     quantity: number | null;
     valuation_base: number;
+    asset_class?: string;
   }>,
 ): Promise<EnrichedHolding[]> {
-  const tickers = holdings
-    .map((h) => h.ticker_symbol)
-    .filter((t): t is string => t != null && t.length > 0);
+  const resolvedTickers = holdings
+    .filter((h) => h.ticker_symbol != null && h.ticker_symbol.length > 0)
+    .map((h) => resolveSymbol(h.ticker_symbol!, h.asset_class));
 
-  const uniqueTickers = [...new Set(tickers.map(resolveSymbol))];
+  const uniqueTickers = [...new Set(resolvedTickers)];
   const quotes = uniqueTickers.length > 0 ? await getQuotes(uniqueTickers) : new Map();
 
+  // Pre-fetch FX rates for any non-AUD price currencies
+  const priceCurrencies = new Set<string>();
+  for (const h of holdings) {
+    const resolved = h.ticker_symbol ? resolveSymbol(h.ticker_symbol, h.asset_class) : null;
+    const quote = resolved ? quotes.get(resolved) : undefined;
+    if (quote?.currency && quote.currency !== 'AUD') {
+      priceCurrencies.add(quote.currency);
+    }
+  }
+  const fxRates = new Map<string, number>();
+  fxRates.set('AUD', 1);
+  for (const ccy of priceCurrencies) {
+    const rate = await getFxRateToAUD(ccy);
+    if (rate != null) fxRates.set(ccy, rate);
+  }
+
   return holdings.map((h) => {
-    const resolved = h.ticker_symbol ? resolveSymbol(h.ticker_symbol) : null;
+    const resolved = h.ticker_symbol ? resolveSymbol(h.ticker_symbol, h.asset_class) : null;
     const quote = resolved ? quotes.get(resolved) : undefined;
 
     let liveValue: number | null = null;
+    let liveValueAud: number | null = null;
     if (quote?.price != null && h.quantity != null) {
       liveValue = toDecimal(quote.price).times(toDecimal(h.quantity)).toNumber();
+      const ccy = quote.currency ?? 'AUD';
+      const fxRate = fxRates.get(ccy);
+      liveValueAud = fxRate != null
+        ? toDecimal(liveValue).times(toDecimal(fxRate)).toNumber()
+        : liveValue; // fallback: assume same currency if no FX rate
     }
 
     return {
@@ -179,6 +261,7 @@ export async function enrichHoldings(
       valuation_base: h.valuation_base,
       live_price: quote?.price ?? null,
       live_value: liveValue,
+      live_value_aud: liveValueAud,
       day_change: quote?.change ?? null,
       day_change_pct: quote?.changePct ?? null,
       price_currency: quote?.currency ?? null,
@@ -236,7 +319,7 @@ export function buildMarketContext(enriched: EnrichedHolding[]): string {
     const liveVal = e.live_value != null ? `$${e.live_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A';
     const chg = e.day_change != null ? `${e.day_change >= 0 ? '+' : ''}$${e.day_change.toFixed(2)}` : '';
     const chgPct = e.day_change_pct != null ? `(${e.day_change_pct >= 0 ? '+' : ''}${e.day_change_pct.toFixed(2)}%)` : '';
-    const qty = e.quantity != null ? `${e.quantity} shares @ $${e.live_price!.toFixed(2)}` : '';
+    const qty = e.quantity != null ? `${e.quantity} units @ $${e.live_price!.toFixed(2)}` : '';
 
     return `  ${e.ticker_symbol}: ${qty} = ${liveVal} ${chg} ${chgPct}`.trim();
   });

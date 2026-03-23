@@ -69,23 +69,28 @@ Structure with these sections:
 
 Write approximately 2000-3000 words. Use professional financial language.`;
 
-const AEST_OFFSET = 10;
-
-const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+function getAustralianEasternParts(): { hour: number; dayName: string } {
+  const formatter = new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Sydney',
+    hour: '2-digit',
+    weekday: 'short',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  const hour = parseInt(get('hour'), 10);
+  const dayName = get('weekday').toLowerCase().slice(0, 3);
+  return { hour, dayName };
+}
 
 function getCurrentAESTHour(): string {
-  const now = new Date();
-  const aestHour = (now.getUTCHours() + AEST_OFFSET) % 24;
-  return `${String(aestHour).padStart(2, '0')}:00`;
+  const { hour } = getAustralianEasternParts();
+  return `${String(hour).padStart(2, '0')}:00`;
 }
 
 function getCurrentAESTDay(): string {
-  const now = new Date();
-  const aestHour = now.getUTCHours() + AEST_OFFSET;
-  const dayOffset = aestHour >= 24 ? 1 : 0;
-  const aestDate = new Date(now);
-  aestDate.setUTCDate(aestDate.getUTCDate() + dayOffset);
-  return DAY_KEYS[aestDate.getUTCDay()];
+  const { dayName } = getAustralianEasternParts();
+  return dayName;
 }
 
 // Support both GET (external cron services) and POST (Vercel cron)
@@ -189,7 +194,7 @@ async function handleCron(request: NextRequest) {
       for (let i = 0; i < holdings.length; i++) {
         const h = holdings[i];
         const e = enriched[i];
-        const val = toDecimal(e.live_value ?? h.valuation_base);
+        const val = toDecimal(e.live_value_aud ?? e.live_value ?? h.valuation_base);
         totalValue = totalValue.plus(val);
         bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);
         byClass[h.asset_class] = (byClass[h.asset_class] ?? toDecimal(0)).plus(val);
@@ -254,9 +259,13 @@ HOLDINGS (NOTE: "Total Value" and "Live Total" below are TOTAL position values, 
 ${holdings.map((h) => {
   const e = enriched.find((x) => x.asset_id === h.asset_id);
   const qty = h.quantity != null ? ` | Qty: ${h.quantity}` : '';
-  const live = e?.live_value != null ? ` | Live Total: ${formatCurrency(e.live_value)}` : '';
+  const liveCcy = e?.price_currency && e.price_currency !== 'AUD' ? ` ${e.price_currency}` : '';
+  const live = e?.live_value != null ? ` | Live Total: ${formatCurrency(e.live_value)}${liveCcy}` : '';
+  const liveAud = e?.live_value_aud != null && e?.price_currency && e.price_currency !== 'AUD'
+    ? ` (A$${e.live_value_aud.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+    : '';
   const ccy = h.currency && h.currency !== 'AUD' ? ` (${h.currency})` : '';
-  return `  ${h.asset_name} | Source: ${h.source} | Class: ${h.asset_class} | Total Value: ${formatCurrency(h.valuation_base)}${ccy}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}`;
+  return `  ${h.asset_name} | Source: ${h.source} | Class: ${h.asset_class} | Total Value: ${formatCurrency(h.valuation_base)}${ccy}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}${liveAud}`;
 }).join('\n')}
 ${marketContext}
 ${benchmarkContext}
