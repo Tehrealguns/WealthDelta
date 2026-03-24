@@ -10,6 +10,8 @@ import { render } from '@react-email/components';
 import BriefingEmail from '@/emails/briefing-email';
 import type { HoldingRow, SnapshotBreakdown, Source, AssetClass } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 const CRON_SECRET = process.env.CRON_SECRET;
 
 const BRIEFING_SYSTEM = `You are a private wealth advisor writing a concise daily briefing for an ultra-high-net-worth individual. Write in a professional but conversational tone.
