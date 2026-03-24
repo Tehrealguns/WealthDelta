@@ -11,7 +11,6 @@ import BriefingEmail from '@/emails/briefing-email';
 import type { HoldingRow, SnapshotBreakdown, Source, AssetClass } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
