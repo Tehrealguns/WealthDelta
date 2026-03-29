@@ -14,6 +14,9 @@ import {
   RefreshCw,
   X,
   Plus,
+  Trash2,
+  ChevronDown,
+  PlusCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { HoldingRow } from '@/lib/types';
@@ -30,7 +33,10 @@ interface VaultFile {
   count: number;
   error?: string;
   streamText: string;
+  streamCollapsed: boolean;
 }
+
+type UploadMode = 'new' | 'add' | 'replace';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -44,7 +50,10 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
   const [dragOver, setDragOver] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [sourceName, setSourceName] = useState('');
-  const [replaceSource, setReplaceSource] = useState<string | null>(null);
+  const [mode, setMode] = useState<UploadMode>('new');
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
+  const [deletingSource, setDeletingSource] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const existingSources = [...new Set(staticHoldings.map((h) => h.source))].sort();
 
@@ -53,6 +62,22 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
     const total = holdings.reduce((s, h) => s + Number(h.valuation_base), 0);
     return { source, count: holdings.length, total };
   });
+
+  function switchMode(newMode: UploadMode) {
+    setMode(newMode);
+    if (newMode === 'new') {
+      setSelectedSource(null);
+      setSourceName('');
+    } else if (existingSources[0] && !selectedSource) {
+      setSelectedSource(existingSources[0]);
+      setSourceName(existingSources[0]);
+    }
+  }
+
+  function selectSource(source: string) {
+    setSelectedSource(source);
+    setSourceName(source);
+  }
 
   function addFiles(fileList: FileList) {
     const newFiles = Array.from(fileList);
@@ -65,6 +90,7 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
         status: 'pending' as const,
         count: 0,
         streamText: '',
+        streamCollapsed: false,
       })),
     ]);
   }
@@ -85,16 +111,25 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
     );
   }
 
+  function toggleStreamCollapsed(idx: number) {
+    setFiles((prev) =>
+      prev.map((f, i) => (i === idx ? { ...f, streamCollapsed: !f.streamCollapsed } : f)),
+    );
+  }
+
   async function processFile(idx: number) {
     const f = files[idx];
-    updateFile(idx, { status: 'uploading', streamText: '' });
+    updateFile(idx, { status: 'uploading', streamText: '', streamCollapsed: false });
 
     const formData = new FormData();
     formData.append('file', f.file);
     formData.append('fileName', f.file.name);
     if (sourceName.trim()) formData.append('portfolioName', sourceName.trim());
     if (f.description) formData.append('description', f.description);
-    if (replaceSource && idx === 0) formData.append('replaceSource', replaceSource);
+    // Only send replaceSource on the first file when in replace mode
+    if (mode === 'replace' && selectedSource && idx === 0) {
+      formData.append('replaceSource', selectedSource);
+    }
 
     try {
       const res = await fetch('/api/setup/upload', { method: 'POST', body: formData });
@@ -128,9 +163,12 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
               updateFile(idx, { streamText: accumulated });
             } else if (event.type === 'done') {
               updateFile(idx, { status: 'done', count: event.count ?? 0, streamText: accumulated });
+              // Auto-collapse after a short delay
+              setTimeout(() => updateFile(idx, { streamCollapsed: true }), 1500);
               return event.count ?? 0;
             } else if (event.type === 'error') {
               updateFile(idx, { status: 'error', error: event.message ?? 'Failed', streamText: accumulated });
+              setTimeout(() => updateFile(idx, { streamCollapsed: true }), 1500);
               return 0;
             }
           } catch { /* skip malformed */ }
@@ -162,6 +200,26 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
     }
   }
 
+  async function deleteSource(source: string) {
+    setDeleteLoading(true);
+    try {
+      const res = await fetch('/api/holdings/source', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to delete');
+      toast.success(`Deleted ${data.deleted} holdings from ${source}`);
+      setDeletingSource(null);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   const anyPending = files.some((f) => f.status === 'pending');
   const allDone = files.length > 0 && files.every((f) => f.status === 'done' || f.status === 'error');
 
@@ -182,47 +240,57 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          {/* Mode: add new vs update existing */}
+          {/* Mode selector: new / add to / replace */}
           {existingSources.length > 0 && (
             <div className="space-y-3">
               <div className="flex rounded-lg border border-white/[0.08] overflow-hidden">
                 <button
-                  onClick={() => { setReplaceSource(null); setSourceName(''); }}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${
-                    !replaceSource
+                  onClick={() => switchMode('new')}
+                  className={`flex-1 px-3 py-2.5 text-xs font-medium transition-colors ${
+                    mode === 'new'
                       ? 'bg-white/[0.08] text-white/80'
                       : 'text-white/30 hover:text-white/50 hover:bg-white/[0.03]'
                   }`}
                 >
-                  Add New Source
+                  <Plus className="size-3 inline mr-1 -mt-px" />
+                  New Source
                 </button>
                 <button
-                  onClick={() => {
-                    if (!replaceSource && existingSources[0]) {
-                      setReplaceSource(existingSources[0]);
-                      setSourceName(existingSources[0]);
-                    }
-                  }}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors border-l border-white/[0.08] ${
-                    replaceSource
+                  onClick={() => switchMode('add')}
+                  className={`flex-1 px-3 py-2.5 text-xs font-medium transition-colors border-l border-white/[0.08] ${
+                    mode === 'add'
                       ? 'bg-white/[0.08] text-white/80'
                       : 'text-white/30 hover:text-white/50 hover:bg-white/[0.03]'
                   }`}
                 >
-                  <RefreshCw className="size-3 inline mr-1.5 -mt-px" />
-                  Update Existing
+                  <PlusCircle className="size-3 inline mr-1 -mt-px" />
+                  Add to Source
+                </button>
+                <button
+                  onClick={() => switchMode('replace')}
+                  className={`flex-1 px-3 py-2.5 text-xs font-medium transition-colors border-l border-white/[0.08] ${
+                    mode === 'replace'
+                      ? 'bg-white/[0.08] text-white/80'
+                      : 'text-white/30 hover:text-white/50 hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <RefreshCw className="size-3 inline mr-1 -mt-px" />
+                  Replace Source
                 </button>
               </div>
 
-              {replaceSource && (
+              {/* Source selector for add/replace modes */}
+              {(mode === 'add' || mode === 'replace') && (
                 <div className="flex flex-wrap gap-1.5">
                   {existingSources.map((s) => (
                     <button
                       key={s}
-                      onClick={() => { setReplaceSource(s); setSourceName(s); }}
+                      onClick={() => selectSource(s)}
                       className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                        replaceSource === s
-                          ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                        selectedSource === s
+                          ? mode === 'replace'
+                            ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                            : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
                           : 'bg-white/[0.04] text-white/40 border border-white/[0.06] hover:border-white/15 hover:text-white/60'
                       }`}
                     >
@@ -234,8 +302,8 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
             </div>
           )}
 
-          {/* Source name input */}
-          {!replaceSource && (
+          {/* Source name input for new source */}
+          {mode === 'new' && (
             <div className="space-y-1.5">
               <label className="text-xs text-white/40">Portfolio / Source Name</label>
               <Input
@@ -247,9 +315,15 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
             </div>
           )}
 
-          {replaceSource && (
+          {/* Mode descriptions */}
+          {mode === 'add' && selectedSource && (
             <p className="text-xs text-white/30">
-              Uploading will replace all holdings from <span className="text-amber-400/70 font-medium">{replaceSource}</span> with the new data.
+              New holdings will be <span className="text-emerald-400/70 font-medium">added</span> to <span className="text-emerald-400/70 font-medium">{selectedSource}</span>. Existing assets will be updated.
+            </p>
+          )}
+          {mode === 'replace' && selectedSource && (
+            <p className="text-xs text-white/30">
+              All holdings from <span className="text-amber-400/70 font-medium">{selectedSource}</span> will be <span className="text-amber-400/70 font-medium">replaced</span> with the new data.
             </p>
           )}
 
@@ -302,14 +376,14 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
                         {f.file.name}
                         <span className="ml-2 text-white/25 text-xs">{formatFileSize(f.file.size)}</span>
                       </p>
-                      <p className="text-xs text-white/30 mt-0.5">
-                        {f.status === 'pending' && 'Ready'}
-                        {f.status === 'uploading' && 'Claude is analyzing...'}
-                        {f.status === 'done' && `${f.count} holdings extracted`}
-                        {f.status === 'error' && (f.error ?? 'Failed')}
+                      <p className="text-xs mt-0.5">
+                        {f.status === 'pending' && <span className="text-white/30">Ready</span>}
+                        {f.status === 'uploading' && <span className="text-white/30">Claude is analyzing...</span>}
+                        {f.status === 'done' && <span className="text-emerald-400/80">{f.count} holdings extracted</span>}
+                        {f.status === 'error' && <span className="text-red-400/60">{f.error ?? 'Failed'}</span>}
                       </p>
                     </div>
-                    <div className="shrink-0">
+                    <div className="shrink-0 flex items-center gap-1.5">
                       {f.status === 'pending' && !processing && (
                         <button onClick={() => removeFile(i)} className="text-white/25 hover:text-white/50 transition-colors">
                           <X className="size-4" />
@@ -318,6 +392,16 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
                       {f.status === 'uploading' && <Loader2 className="size-4 text-white/30 animate-spin" />}
                       {f.status === 'done' && <CheckCircle2 className="size-4 text-emerald-400" />}
                       {f.status === 'error' && <AlertCircle className="size-4 text-red-400/60" />}
+                      {/* Toggle stream log for completed files */}
+                      {(f.status === 'done' || f.status === 'error') && f.streamText && (
+                        <button
+                          onClick={() => toggleStreamCollapsed(i)}
+                          className="text-white/20 hover:text-white/40 transition-colors"
+                          title={f.streamCollapsed ? 'Show log' : 'Hide log'}
+                        >
+                          <ChevronDown className={`size-3.5 transition-transform duration-200 ${f.streamCollapsed ? '-rotate-90' : ''}`} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -331,8 +415,12 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
                     />
                   )}
 
-                  {(f.status === 'uploading' || f.streamText) && (
-                    <StreamPanel text={f.streamText} active={f.status === 'uploading'} />
+                  {/* Stream panel: show while uploading, collapsible after done */}
+                  {f.status === 'uploading' && (
+                    <StreamPanel text={f.streamText} active />
+                  )}
+                  {(f.status === 'done' || f.status === 'error') && f.streamText && !f.streamCollapsed && (
+                    <StreamPanel text={f.streamText} active={false} />
                   )}
                 </div>
               ))}
@@ -356,7 +444,7 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
             )}
             {allDone && (
               <Button
-                onClick={() => { setFiles([]); setReplaceSource(null); }}
+                onClick={() => { setFiles([]); setSelectedSource(null); if (mode === 'new') setSourceName(''); }}
                 variant="ghost"
                 className="border border-white/[0.08] text-white/40 hover:text-white hover:bg-white/5 h-11"
               >
@@ -378,26 +466,63 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
           </CardHeader>
           <CardContent className="space-y-2">
             {holdingsBySource.map((group) => (
-              <button
+              <div
                 key={group.source}
-                onClick={() => {
-                  setReplaceSource(group.source);
-                  setSourceName(group.source);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                className="flex w-full items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3 hover:bg-white/[0.04] hover:border-white/[0.10] transition-colors group"
+                className="rounded-lg border border-white/[0.06] bg-white/[0.02] overflow-hidden"
               >
-                <div className="text-left">
-                  <p className="text-sm font-medium text-white/70">{group.source}</p>
-                  <p className="text-xs text-white/30 mt-0.5">{group.count} holding{group.count !== 1 ? 's' : ''}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-sm tabular-nums text-white/50">
-                    {formatCurrency(group.total)}
-                  </span>
-                  <RefreshCw className="size-3.5 text-white/15 group-hover:text-white/40 transition-colors" />
-                </div>
-              </button>
+                {deletingSource === group.source ? (
+                  /* Delete confirmation */
+                  <div className="px-4 py-3 space-y-2">
+                    <p className="text-xs text-white/50">
+                      Delete all <span className="text-red-400/80 font-medium">{group.count} holdings</span> from <span className="text-white/70 font-medium">{group.source}</span>?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => deleteSource(group.source)}
+                        disabled={deleteLoading}
+                        className="inline-flex items-center rounded-md bg-red-500/15 border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/25 transition-colors disabled:opacity-50"
+                      >
+                        {deleteLoading ? <Loader2 className="size-3 mr-1.5 animate-spin" /> : <Trash2 className="size-3 mr-1.5" />}
+                        Delete
+                      </button>
+                      <button
+                        onClick={() => setDeletingSource(null)}
+                        disabled={deleteLoading}
+                        className="rounded-md px-3 py-1.5 text-xs font-medium text-white/40 hover:text-white/60 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Normal source row */
+                  <div className="flex items-center px-4 py-3 group">
+                    <button
+                      onClick={() => {
+                        setMode('add');
+                        selectSource(group.source);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="flex-1 flex items-center justify-between hover:opacity-80 transition-opacity"
+                    >
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-white/70">{group.source}</p>
+                        <p className="text-xs text-white/30 mt-0.5">{group.count} holding{group.count !== 1 ? 's' : ''}</p>
+                      </div>
+                      <span className="font-mono text-sm tabular-nums text-white/50">
+                        {formatCurrency(group.total)}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setDeletingSource(group.source)}
+                      className="ml-3 p-1.5 rounded-md text-white/10 hover:text-red-400/60 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Delete source"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
           </CardContent>
         </Card>

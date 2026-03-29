@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { type HoldingRow } from '@/lib/types';
 import { formatCurrency } from '@/lib/decimal';
-import { ChevronDown, Lock } from 'lucide-react';
+import { ChevronDown, Lock, Trash2, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const SOURCE_PALETTE = [
   'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
@@ -41,6 +43,30 @@ interface GroupedData {
 }
 
 export function HoldingsTable({ data }: HoldingsTableProps) {
+  const router = useRouter();
+  const [deletingSource, setDeletingSource] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  async function deleteSource(source: string) {
+    setDeleteLoading(true);
+    try {
+      const res = await fetch('/api/holdings/source', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? 'Failed to delete');
+      toast.success(`Deleted ${result.deleted} holdings from ${source}`);
+      setDeletingSource(null);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   const grouped = useMemo<GroupedData[]>(() => {
     const bySource = new Map<string, HoldingRow[]>();
     for (const h of data) {
@@ -123,27 +149,59 @@ export function HoldingsTable({ data }: HoldingsTableProps) {
           return (
             <div key={group.source} className="rounded-xl border border-white/[0.06] overflow-hidden">
               {/* Source header */}
-              <button
-                onClick={() => toggleSource(group.source)}
-                className="flex w-full items-center justify-between px-4 py-3 bg-white/[0.03] hover:bg-white/[0.05] transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium ${sourceStyle}`}>
-                    {group.source}
-                  </span>
-                  <span className="text-xs text-white/30">
-                    {group.holdingCount} holding{group.holdingCount !== 1 ? 's' : ''}
-                  </span>
+              {deletingSource === group.source ? (
+                <div className="flex items-center gap-3 px-4 py-3 bg-white/[0.03]">
+                  <p className="flex-1 text-xs text-white/50">
+                    Delete all <span className="text-red-400/80 font-medium">{group.holdingCount} holdings</span> from <span className="text-white/70 font-medium">{group.source}</span>?
+                  </p>
+                  <button
+                    onClick={() => deleteSource(group.source)}
+                    disabled={deleteLoading}
+                    className="inline-flex items-center rounded-md bg-red-500/15 border border-red-500/30 px-2.5 py-1 text-xs font-medium text-red-400 hover:bg-red-500/25 transition-colors disabled:opacity-50"
+                  >
+                    {deleteLoading ? <Loader2 className="size-3 mr-1 animate-spin" /> : <Trash2 className="size-3 mr-1" />}
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => setDeletingSource(null)}
+                    disabled={deleteLoading}
+                    className="rounded-md px-2.5 py-1 text-xs text-white/40 hover:text-white/60 transition-colors"
+                  >
+                    Cancel
+                  </button>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-sm tabular-nums text-white/70">
-                    {formatCurrency(group.sourceTotal)}
-                  </span>
-                  <ChevronDown
-                    className={`size-4 text-white/25 transition-transform duration-200 ${isSourceOpen ? '' : '-rotate-90'}`}
-                  />
-                </div>
-              </button>
+              ) : (
+              <div className="flex items-center bg-white/[0.03] hover:bg-white/[0.05] transition-colors group/source">
+                <button
+                  onClick={() => toggleSource(group.source)}
+                  className="flex flex-1 items-center justify-between px-4 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium ${sourceStyle}`}>
+                      {group.source}
+                    </span>
+                    <span className="text-xs text-white/30">
+                      {group.holdingCount} holding{group.holdingCount !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-sm tabular-nums text-white/70">
+                      {formatCurrency(group.sourceTotal)}
+                    </span>
+                    <ChevronDown
+                      className={`size-4 text-white/25 transition-transform duration-200 ${isSourceOpen ? '' : '-rotate-90'}`}
+                    />
+                  </div>
+                </button>
+                <button
+                  onClick={() => setDeletingSource(group.source)}
+                  className="mr-3 p-1.5 rounded-md text-white/10 hover:text-red-400/60 hover:bg-red-500/10 transition-colors opacity-0 group-hover/source:opacity-100"
+                  title="Delete source"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+              )}
 
               {/* Asset class groups */}
               {isSourceOpen && (
