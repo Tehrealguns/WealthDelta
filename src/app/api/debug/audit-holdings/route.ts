@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
   for (let i = 0; i < holdings.length; i++) {
     const h = holdings[i];
     const e = enriched[i];
-    const val = toDecimal(e.live_value_aud ?? e.live_value ?? h.valuation_base);
+    const val = e.live_value_aud != null ? toDecimal(e.live_value_aud) : toDecimal(h.valuation_base);
     totalLive = totalLive.plus(val);
     totalBase = totalBase.plus(toDecimal(h.valuation_base));
 

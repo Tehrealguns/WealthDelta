@@ -103,12 +103,20 @@ export async function POST(request: NextRequest) {
   let totalValue = toDecimal(0);
   const bySource: Record<string, ReturnType<typeof toDecimal>> = {};
   const byClass: Record<string, ReturnType<typeof toDecimal>> = {};
+  let staleCount = 0;
 
   for (let i = 0; i < holdings.length; i++) {
     const h = holdings[i];
     const e = enriched[i];
-    // Prefer FX-converted AUD value, fall back to raw live value, then base valuation
-    const val = toDecimal(e.live_value_aud ?? e.live_value ?? h.valuation_base);
+    // Use FX-converted AUD value when available; otherwise fall back to base valuation.
+    // Skip live_value as intermediate fallback — it's in foreign currency and wrong to treat as AUD.
+    let val: ReturnType<typeof toDecimal>;
+    if (e.live_value_aud != null) {
+      val = toDecimal(e.live_value_aud);
+    } else {
+      val = toDecimal(h.valuation_base);
+      if (e.stale || e.fx_failed) staleCount++;
+    }
     totalValue = totalValue.plus(val);
     bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);
     byClass[h.asset_class] = (byClass[h.asset_class] ?? toDecimal(0)).plus(val);
@@ -175,7 +183,7 @@ export async function POST(request: NextRequest) {
 
   const portfolioContext = `
 BASE CURRENCY: AUD (Australian Dollar). All totals are in AUD.
-
+${staleCount > 0 ? `DATA QUALITY WARNING: ${staleCount} of ${holdings.length} holdings are using base valuation (stale/missing live price or FX conversion failed). Portfolio total may not reflect current market prices for those positions.\n` : ''}
 CURRENT PORTFOLIO (${today}):
 Total Value (AUD): ${formatCurrency(totalValue.toNumber())}
 ${deltaValue != null ? `Daily Change: ${formatCurrency(deltaValue)} (${deltaPct?.toFixed(2)}%)` : 'No previous snapshot for comparison.'}

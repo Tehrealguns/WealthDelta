@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { getBankPrompt } from '@/lib/bank-registry';
-import type { UnifiedPortfolio } from '@/lib/types';
+import { validateAndNormalizeHoldings } from '@/lib/holdings-validation';
 
 export const maxDuration = 300;
 
@@ -79,17 +79,21 @@ export async function POST(request: NextRequest) {
     .map((b) => ('text' in b ? b.text : ''))
     .join('');
 
-  let holdings: UnifiedPortfolio[];
+  let rawHoldings: unknown[];
   try {
     const cleaned = responseText.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-    holdings = JSON.parse(cleaned) as UnifiedPortfolio[];
-    if (!Array.isArray(holdings)) throw new Error('Not an array');
+    rawHoldings = JSON.parse(cleaned) as unknown[];
+    if (!Array.isArray(rawHoldings)) throw new Error('Not an array');
   } catch {
     return NextResponse.json(
       { error: 'Extraction failed', details: 'Could not parse holdings from this PDF. Try a clearer statement.' },
       { status: 422 },
     );
   }
+
+  const { valid: holdings, warnings, dropped } = validateAndNormalizeHoldings(rawHoldings);
+  if (warnings.length > 0) console.log(`[vault/extract] Validation warnings: ${warnings.join('; ')}`);
+  if (dropped > 0) console.log(`[vault/extract] Dropped ${dropped} invalid holdings`);
 
   if (holdings.length === 0) {
     return NextResponse.json(
@@ -105,10 +109,10 @@ export async function POST(request: NextRequest) {
     asset_name: item.asset_name,
     asset_class: item.asset_class,
     ticker_symbol: item.ticker_symbol,
-    quantity: item.quantity ?? null,
+    quantity: item.quantity,
     valuation_base: item.valuation_base,
     valuation_date: item.valuation_date,
-    currency: item.currency ?? 'AUD',
+    currency: item.currency,
     is_static: true,
   }));
 

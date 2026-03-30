@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { getEmailParsePrompt } from '@/lib/bank-registry';
-import type { UnifiedPortfolio } from '@/lib/types';
+import { validateAndNormalizeHoldings } from '@/lib/holdings-validation';
 
 const INGEST_SECRET = process.env.INGEST_WEBHOOK_SECRET;
 
@@ -132,11 +132,11 @@ export async function POST(request: NextRequest) {
     .map((b) => ('text' in b ? b.text : ''))
     .join('');
 
-  let holdings: (UnifiedPortfolio & { event_type?: string })[];
+  let rawParsed: (Record<string, unknown>)[];
   try {
     const cleaned = responseText.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-    holdings = JSON.parse(cleaned);
-    if (!Array.isArray(holdings)) throw new Error('Not an array');
+    rawParsed = JSON.parse(cleaned);
+    if (!Array.isArray(rawParsed)) throw new Error('Not an array');
   } catch {
     await supabase.from('ingested_emails').insert({
       user_id: userId,
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'No holdings extracted' });
   }
 
-  if (holdings.length === 0) {
+  if (rawParsed.length === 0) {
     await supabase.from('ingested_emails').insert({
       user_id: userId,
       message_id: messageId,
@@ -163,25 +163,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'No financial data found' });
   }
 
-  const rows = holdings
-    .filter((h) => h.event_type !== 'sell')
-    .map((h) => ({
-      user_id: userId,
-      asset_id: h.asset_id,
-      source: h.source,
-      asset_name: h.asset_name,
-      asset_class: h.asset_class,
-      ticker_symbol: h.ticker_symbol,
-      quantity: h.quantity ?? null,
-      valuation_base: h.valuation_base,
-      valuation_date: h.valuation_date,
-      currency: h.currency ?? 'AUD',
-      is_static: true,
-    }));
+  // Separate sell events before validation (they only need asset_id)
+  const sellItems = rawParsed.filter((h) => h.event_type === 'sell');
+  const nonSellItems = rawParsed.filter((h) => h.event_type !== 'sell');
 
-  const sellIds = holdings
-    .filter((h) => h.event_type === 'sell')
-    .map((h) => h.asset_id);
+  const { valid: holdings, warnings, dropped } = validateAndNormalizeHoldings(nonSellItems);
+  if (warnings.length > 0) console.log(`[ingest/email] Validation warnings: ${warnings.join('; ')}`);
+  if (dropped > 0) console.log(`[ingest/email] Dropped ${dropped} invalid holdings`);
+
+  const rows = holdings.map((h) => ({
+    user_id: userId,
+    asset_id: h.asset_id,
+    source: h.source,
+    asset_name: h.asset_name,
+    asset_class: h.asset_class,
+    ticker_symbol: h.ticker_symbol,
+    quantity: h.quantity,
+    valuation_base: h.valuation_base,
+    valuation_date: h.valuation_date,
+    currency: h.currency,
+    is_static: true,
+  }));
+
+  // Normalize sell asset_ids too for consistency
+  const { normalizeAssetId } = await import('@/lib/holdings-validation');
+  const sellIds = sellItems
+    .map((h) => {
+      const rawId = typeof h.asset_id === 'string' ? h.asset_id : '';
+      const ticker = typeof h.ticker_symbol === 'string' ? h.ticker_symbol : null;
+      const ac = typeof h.asset_class === 'string' ? h.asset_class : 'Equity';
+      return rawId ? normalizeAssetId(rawId, ticker, ac) : '';
+    })
+    .filter(Boolean);
 
   if (rows.length > 0) {
     await supabase

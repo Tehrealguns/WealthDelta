@@ -202,8 +202,9 @@ async function handleCron(request: NextRequest) {
       for (let i = 0; i < holdings.length; i++) {
         const h = holdings[i];
         const e = enriched[i];
-        // Prefer FX-converted AUD value, fall back to raw live value, then base valuation
-        const val = toDecimal(e.live_value_aud ?? e.live_value ?? h.valuation_base);
+        // Use FX-converted AUD value when available; otherwise fall back to base valuation.
+        // Do NOT use live_value as fallback — it's in foreign currency and wrong to treat as AUD.
+        const val = e.live_value_aud != null ? toDecimal(e.live_value_aud) : toDecimal(h.valuation_base);
         totalValue = totalValue.plus(val);
         bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);
         byClass[h.asset_class] = (byClass[h.asset_class] ?? toDecimal(0)).plus(val);

@@ -36,7 +36,9 @@ export async function POST() {
   for (let i = 0; i < holdings.length; i++) {
     const h = holdings[i];
     const e = enriched[i];
-    const val = toDecimal(e.live_value_aud ?? e.live_value ?? h.valuation_base);
+    // Use FX-converted AUD value when available; otherwise fall back to base valuation.
+    // Do NOT use live_value as fallback — it's in foreign currency and wrong to treat as AUD.
+    const val = e.live_value_aud != null ? toDecimal(e.live_value_aud) : toDecimal(h.valuation_base);
     totalValue = totalValue.plus(val);
 
     bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);

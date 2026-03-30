@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
-import type { UnifiedPortfolio } from '@/lib/types';
+import { validateAndNormalizeHoldings } from '@/lib/holdings-validation';
 
 export const maxDuration = 300;
 
@@ -173,27 +173,38 @@ export async function POST(request: NextRequest) {
         return;
       }
 
-      let holdings: UnifiedPortfolio[];
+      let rawHoldings: unknown[];
       try {
         const cleaned = fullText.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
         const jsonStart = cleaned.indexOf('[');
         const jsonEnd = cleaned.lastIndexOf(']');
         if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON array found');
-        holdings = JSON.parse(cleaned.slice(jsonStart, jsonEnd + 1)) as UnifiedPortfolio[];
-        if (!Array.isArray(holdings)) throw new Error('Not an array');
+        rawHoldings = JSON.parse(cleaned.slice(jsonStart, jsonEnd + 1)) as unknown[];
+        if (!Array.isArray(rawHoldings)) throw new Error('Not an array');
       } catch {
         send({ type: 'error', message: 'Could not extract holdings. Try adding a description.' });
         controller.close();
         return;
       }
 
+      const effectiveSource = portfolioName?.trim().slice(0, 200) || undefined;
+      const { valid: holdings, warnings, dropped } = validateAndNormalizeHoldings(rawHoldings, effectiveSource);
+
+      if (warnings.length > 0) {
+        console.log(`[upload] Validation warnings: ${warnings.join('; ')}`);
+      }
+      if (dropped > 0) {
+        console.log(`[upload] Dropped ${dropped} invalid holdings`);
+      }
+
       if (holdings.length === 0) {
-        send({ type: 'done', count: 0, message: 'No holdings found' });
+        send({ type: 'done', count: 0, message: 'No valid holdings found' });
         controller.close();
         return;
       }
 
-      const effectiveSource = portfolioName || holdings[0]?.source || 'Unknown';
+      // Use validated source, fall back to first holding's source
+      const finalSource = effectiveSource || holdings[0]?.source || 'Unknown';
 
       if (replaceSource) {
         await supabase
@@ -206,14 +217,14 @@ export async function POST(request: NextRequest) {
       const rows = holdings.map((item) => ({
         user_id: userId,
         asset_id: item.asset_id,
-        source: effectiveSource,
+        source: finalSource,
         asset_name: item.asset_name,
         asset_class: item.asset_class,
         ticker_symbol: item.ticker_symbol,
-        quantity: item.quantity ?? null,
+        quantity: item.quantity,
         valuation_base: item.valuation_base,
         valuation_date: item.valuation_date,
-        currency: item.currency ?? 'AUD',
+        currency: item.currency,
         is_static: true,
       }));
 
@@ -225,7 +236,7 @@ export async function POST(request: NextRequest) {
       if (error) {
         send({ type: 'error', message: `Failed to save: ${error.message}` });
       } else {
-        send({ type: 'done', count: data.length, source: holdings[0]?.source ?? 'Unknown' });
+        send({ type: 'done', count: data.length, source: finalSource });
       }
 
       controller.close();
