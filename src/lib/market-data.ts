@@ -78,6 +78,14 @@ const COMMODITY_ALIASES: Record<string, string> = {
 
 const COMMODITY_ASSET_CLASSES = new Set(['Commodity', 'Alternative']);
 
+// Yahoo Finance returns some currencies in sub-units (e.g., pence instead of pounds).
+// Map: sub-unit code → { base currency, divisor }
+const SUB_UNIT_CURRENCIES: Record<string, { currency: string; divisor: number }> = {
+  'GBp': { currency: 'GBP', divisor: 100 },  // British pence → pounds
+  'ILA': { currency: 'ILS', divisor: 100 },   // Israeli agora → shekel
+  'ZAc': { currency: 'ZAR', divisor: 100 },   // South African cents → rand
+};
+
 export function resolveSymbol(raw: string, assetClass?: string): string {
   const upper = raw.trim().toUpperCase();
   if (TICKER_ALIASES[upper]) return TICKER_ALIASES[upper];
@@ -120,12 +128,14 @@ export async function getQuote(symbol: string): Promise<QuoteResult> {
     let quotePrice = currentPrice;
     let quotePrevClose = prevClose;
 
-    // Yahoo Finance returns London stocks (.L) priced in GBp (pence), not GBP (pounds).
-    // Normalize to GBP by dividing prices by 100 so downstream FX conversion works correctly.
-    if (quoteCurrency === 'GBp') {
-      quoteCurrency = 'GBP';
-      if (quotePrice != null) quotePrice /= 100;
-      if (quotePrevClose != null) quotePrevClose /= 100;
+    // Normalize sub-unit currencies (GBp → GBP, ZAc → ZAR, ILA → ILS, etc.)
+    // Yahoo Finance returns some exchange prices in sub-units; divide to get base currency.
+    if (quoteCurrency && SUB_UNIT_CURRENCIES[quoteCurrency]) {
+      const { currency, divisor } = SUB_UNIT_CURRENCIES[quoteCurrency];
+      console.log(`[market-data] normalizing ${quoteCurrency} → ${currency} (÷${divisor}) for ${resolved}`);
+      quoteCurrency = currency;
+      if (quotePrice != null) quotePrice /= divisor;
+      if (quotePrevClose != null) quotePrevClose /= divisor;
     }
 
     const quote: QuoteResult = {
@@ -169,6 +179,8 @@ export async function getQuotes(symbols: string[]): Promise<Map<string, QuoteRes
       const result = settled[i];
       if (result.status === 'fulfilled') {
         results.set(toFetch[i], result.value);
+      } else {
+        console.error(`[market-data] getQuotes: rejected for "${toFetch[i]}":`, result.reason);
       }
     }
   }
@@ -189,6 +201,7 @@ export interface EnrichedHolding {
   price_currency: string | null;
   fx_rate_to_aud: number | null;
   stale: boolean;
+  fx_failed: boolean;
 }
 
 // FX pairs relative to USD (Yahoo returns "1 base = X USD" for pairs like AUDUSD=X)
@@ -202,7 +215,12 @@ const FX_PAIRS: Record<string, string> = {
   'SGD': 'USDSGD=X',   // 1 USD = X SGD
   'NZD': 'NZDUSD=X',   // 1 NZD = X USD
   'CAD': 'USDCAD=X',   // 1 USD = X CAD
+  'ILS': 'USDILS=X',   // 1 USD = X ILS
+  'ZAR': 'USDZAR=X',   // 1 USD = X ZAR
 };
+
+// Currencies where the pair is XXX/USD (value = 1 base = X USD)
+const XXX_USD_PAIRS = new Set(['EUR', 'GBP', 'NZD']);
 
 async function getFxRateToAUD(currency: string): Promise<number | null> {
   if (currency === 'AUD') return 1;
@@ -222,13 +240,16 @@ async function getFxRateToAUD(currency: string): Promise<number | null> {
 
   // For other currencies, convert via USD
   const pairSymbol = FX_PAIRS[currency];
-  if (!pairSymbol) return null;
+  if (!pairSymbol) {
+    console.error(`[market-data] getFxRateToAUD: no FX pair for currency "${currency}"`);
+    return null;
+  }
 
   const fxQuote = await getQuote(pairSymbol);
   const fxRate = fxQuote?.price;
   if (!fxRate) return null;
 
-  if (currency === 'EUR' || currency === 'GBP' || currency === 'NZD') {
+  if (XXX_USD_PAIRS.has(currency)) {
     // These pairs are XXXUSD (1 EUR/GBP/NZD = X USD), so multiply by fxRate to get USD, then convert to AUD
     return fxRate / audUsd;
   }
@@ -268,9 +289,20 @@ export async function enrichHoldings(
   }
   const fxRates = new Map<string, number>();
   fxRates.set('AUD', 1);
+  const fxFailedCurrencies = new Set<string>();
   for (const ccy of priceCurrencies) {
-    const rate = await getFxRateToAUD(ccy);
-    if (rate != null) fxRates.set(ccy, rate);
+    try {
+      const rate = await getFxRateToAUD(ccy);
+      if (rate != null) {
+        fxRates.set(ccy, rate);
+      } else {
+        fxFailedCurrencies.add(ccy);
+        console.error(`[market-data] FX rate failed for ${ccy} → AUD, holdings in this currency will use base valuation`);
+      }
+    } catch (err) {
+      fxFailedCurrencies.add(ccy);
+      console.error(`[market-data] FX rate error for ${ccy}:`, err instanceof Error ? err.message : err);
+    }
   }
 
   return holdings.map((h) => {
@@ -281,16 +313,28 @@ export async function enrichHoldings(
     let liveValueAud: number | null = null;
     const priceCcy = quote?.currency ?? null;
     let fxRate: number | null = null;
+    let fxFailed = false;
 
     if (quote?.price != null && h.quantity != null) {
       liveValue = toDecimal(quote.price).times(toDecimal(h.quantity)).toNumber();
-      const ccy = quote.currency ?? 'AUD';
-      const rate = fxRates.get(ccy);
-      if (rate != null) {
-        fxRate = rate;
-        liveValueAud = toDecimal(liveValue).times(toDecimal(rate)).toNumber();
+      const ccy = quote.currency ?? null;
+
+      if (ccy && ccy !== 'AUD') {
+        const rate = fxRates.get(ccy);
+        if (rate != null) {
+          fxRate = rate;
+          liveValueAud = toDecimal(liveValue).times(toDecimal(rate)).toNumber();
+        } else {
+          // FX conversion failed — do NOT silently treat foreign currency as AUD.
+          // Leave liveValueAud null so callers fall back to base valuation (which was
+          // originally extracted in the correct currency from the statement).
+          fxFailed = true;
+          liveValueAud = null;
+        }
       } else {
-        liveValueAud = liveValue; // fallback: assume same currency if no FX rate
+        // Already AUD or unknown currency with no quote currency info
+        fxRate = 1;
+        liveValueAud = liveValue;
       }
     }
 
@@ -307,6 +351,7 @@ export async function enrichHoldings(
       price_currency: priceCcy,
       fx_rate_to_aud: fxRate,
       stale: quote?.price == null,
+      fx_failed: fxFailed,
     };
   });
 }
@@ -369,15 +414,17 @@ export function buildMarketContext(enriched: EnrichedHolding[]): string {
   });
 
   const lines = unique.map((e) => {
-    const ccy = e.price_currency || '???';
+    const ccy = e.price_currency || 'UNK';
     const chg = e.day_change != null ? `${e.day_change >= 0 ? '+' : ''}${e.day_change.toFixed(2)}` : '';
     const chgPct = e.day_change_pct != null ? `(${e.day_change_pct >= 0 ? '+' : ''}${e.day_change_pct.toFixed(2)}%)` : '';
 
     let detail: string;
     if (e.quantity != null && e.live_value != null) {
       detail = `${e.quantity} units @ ${ccy} ${e.live_price!.toFixed(2)} = ${ccy} ${e.live_value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      if (e.live_value_aud != null && ccy !== 'AUD') {
-        detail += ` (AUD ${e.live_value_aud.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @ fx ${e.fx_rate_to_aud?.toFixed(4)})`;
+      if (ccy !== 'AUD' && e.live_value_aud != null && e.fx_rate_to_aud != null) {
+        detail += ` (AUD ${e.live_value_aud.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @ fx ${e.fx_rate_to_aud.toFixed(4)})`;
+      } else if (ccy !== 'AUD' && e.fx_failed) {
+        detail += ` [FX CONVERSION FAILED — do NOT use this value as AUD, use base valuation instead]`;
       }
     } else {
       detail = `price: ${ccy} ${e.live_price!.toFixed(2)} (quantity not available, using base valuation)`;
@@ -386,5 +433,17 @@ export function buildMarketContext(enriched: EnrichedHolding[]): string {
     return `  ${e.ticker_symbol} [${ccy}]: ${detail} | day: ${chg} ${chgPct}`.trim();
   });
 
-  return `\nLIVE MARKET DATA (portfolio holdings with currency):\n${lines.join('\n')}`;
+  // Add data quality warnings
+  const staleCount = enriched.filter((e) => e.stale).length;
+  const fxFailCount = enriched.filter((e) => e.fx_failed).length;
+  const warnings: string[] = [];
+  if (staleCount > 0) warnings.push(`${staleCount} holdings have no live price (using base valuation)`);
+  if (fxFailCount > 0) warnings.push(`${fxFailCount} holdings have failed FX conversion (using base valuation, NOT live price)`);
+
+  let header = '\nLIVE MARKET DATA (portfolio holdings with currency):';
+  if (warnings.length > 0) {
+    header += `\n  ⚠ DATA QUALITY: ${warnings.join('; ')}`;
+  }
+
+  return `${header}\n${lines.join('\n')}`;
 }

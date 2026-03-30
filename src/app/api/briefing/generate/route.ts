@@ -164,9 +164,12 @@ export async function POST(request: NextRequest) {
     const ccy = h.currency && h.currency !== 'AUD' ? ` (${h.currency})` : '';
     const liveCcy = e?.price_currency && e.price_currency !== 'AUD' ? ` ${e.price_currency}` : '';
     const live = e?.live_value != null ? ` | Live Total: ${formatCurrency(e.live_value)}${liveCcy}` : '';
-    const liveAud = e?.live_value_aud != null && e?.price_currency && e.price_currency !== 'AUD'
-      ? ` (A$${e.live_value_aud.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @ fx ${e.fx_rate_to_aud?.toFixed(4)})`
-      : '';
+    let liveAud = '';
+    if (e?.live_value_aud != null && e?.price_currency && e.price_currency !== 'AUD' && e.fx_rate_to_aud != null) {
+      liveAud = ` (A$${e.live_value_aud.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @ fx ${e.fx_rate_to_aud.toFixed(4)})`;
+    } else if (e?.fx_failed) {
+      liveAud = ` [FX FAILED — use base valuation, NOT live price for AUD total]`;
+    }
     return `  ${h.asset_name} | Source: ${h.source} | Class: ${h.asset_class} | Total Value: ${formatCurrency(h.valuation_base)}${ccy}${h.ticker_symbol ? ` [${h.ticker_symbol}]` : ''}${qty}${live}${liveAud}`;
   });
 
