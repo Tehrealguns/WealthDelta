@@ -116,14 +116,26 @@ export async function getQuote(symbol: string): Promise<QuoteResult> {
     const currentPrice = meta?.regularMarketPrice ?? null;
     const prevClose = meta?.chartPreviousClose ?? (closes && closes.length >= 2 ? closes[closes.length - 2] : null);
 
+    let quoteCurrency: string | null = meta?.currency ?? null;
+    let quotePrice = currentPrice;
+    let quotePrevClose = prevClose;
+
+    // Yahoo Finance returns London stocks (.L) priced in GBp (pence), not GBP (pounds).
+    // Normalize to GBP by dividing prices by 100 so downstream FX conversion works correctly.
+    if (quoteCurrency === 'GBp') {
+      quoteCurrency = 'GBP';
+      if (quotePrice != null) quotePrice /= 100;
+      if (quotePrevClose != null) quotePrevClose /= 100;
+    }
+
     const quote: QuoteResult = {
       symbol: resolved,
-      price: currentPrice,
-      previousClose: prevClose,
-      change: currentPrice != null && prevClose != null ? currentPrice - prevClose : null,
-      changePct: currentPrice != null && prevClose != null && prevClose !== 0
-        ? ((currentPrice - prevClose) / prevClose) * 100 : null,
-      currency: meta?.currency ?? null,
+      price: quotePrice,
+      previousClose: quotePrevClose,
+      change: quotePrice != null && quotePrevClose != null ? quotePrice - quotePrevClose : null,
+      changePct: quotePrice != null && quotePrevClose != null && quotePrevClose !== 0
+        ? ((quotePrice - quotePrevClose) / quotePrevClose) * 100 : null,
+      currency: quoteCurrency,
       name: meta?.shortName ?? meta?.longName ?? null,
       marketState: meta?.marketState ?? null,
     };
