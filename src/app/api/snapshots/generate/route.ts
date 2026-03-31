@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { toDecimal, Decimal } from '@/lib/decimal';
-import { enrichHoldings } from '@/lib/market-data';
+import { enrichHoldings, holdingValueAud } from '@/lib/market-data';
 import type { Source, AssetClass, SnapshotBreakdown } from '@/lib/types';
 
 export async function POST() {
@@ -36,9 +36,7 @@ export async function POST() {
   for (let i = 0; i < holdings.length; i++) {
     const h = holdings[i];
     const e = enriched[i];
-    // Use FX-converted AUD value when available; otherwise fall back to base valuation.
-    // Do NOT use live_value as fallback — it's in foreign currency and wrong to treat as AUD.
-    const val = e.live_value_aud != null ? toDecimal(e.live_value_aud) : toDecimal(h.valuation_base);
+    const val = toDecimal(holdingValueAud(h, e));
     totalValue = totalValue.plus(val);
 
     bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);

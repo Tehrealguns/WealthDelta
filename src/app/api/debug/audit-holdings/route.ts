@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
-import { resolveSymbol, enrichHoldings, buildMarketContext, fetchBenchmarks } from '@/lib/market-data';
+import { resolveSymbol, enrichHoldings, buildMarketContext, fetchBenchmarks, holdingValueAud } from '@/lib/market-data';
 import { toDecimal, formatCurrency } from '@/lib/decimal';
 import type { HoldingRow } from '@/lib/types';
 
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
   for (let i = 0; i < holdings.length; i++) {
     const h = holdings[i];
     const e = enriched[i];
-    const val = e.live_value_aud != null ? toDecimal(e.live_value_aud) : toDecimal(h.valuation_base);
+    const val = toDecimal(holdingValueAud(h, e));
     totalLive = totalLive.plus(val);
     totalBase = totalBase.plus(toDecimal(h.valuation_base));
 

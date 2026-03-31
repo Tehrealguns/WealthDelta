@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { maskPII } from '@/lib/pii-masker';
 import { toDecimal, formatCurrency } from '@/lib/decimal';
-import { enrichHoldings, buildMarketContext, fetchBenchmarks } from '@/lib/market-data';
+import { enrichHoldings, buildMarketContext, fetchBenchmarks, holdingValueAud } from '@/lib/market-data';
 import type { HoldingRow, SnapshotBreakdown, Source, AssetClass } from '@/lib/types';
 
 const BRIEFING_SYSTEM = `You are a private wealth advisor writing a concise daily briefing for an ultra-high-net-worth individual. Write in a professional but conversational tone.
@@ -108,15 +108,8 @@ export async function POST(request: NextRequest) {
   for (let i = 0; i < holdings.length; i++) {
     const h = holdings[i];
     const e = enriched[i];
-    // Use FX-converted AUD value when available; otherwise fall back to base valuation.
-    // Skip live_value as intermediate fallback — it's in foreign currency and wrong to treat as AUD.
-    let val: ReturnType<typeof toDecimal>;
-    if (e.live_value_aud != null) {
-      val = toDecimal(e.live_value_aud);
-    } else {
-      val = toDecimal(h.valuation_base);
-      if (e.stale || e.fx_failed) staleCount++;
-    }
+    const val = toDecimal(holdingValueAud(h, e));
+    if (e.live_value_aud == null && (e.stale || e.fx_failed)) staleCount++;
     totalValue = totalValue.plus(val);
     bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);
     byClass[h.asset_class] = (byClass[h.asset_class] ?? toDecimal(0)).plus(val);

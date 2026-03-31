@@ -3,7 +3,7 @@ import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { maskPII } from '@/lib/pii-masker';
 import { toDecimal, formatCurrency, Decimal } from '@/lib/decimal';
-import { enrichHoldings, buildMarketContext, fetchBenchmarks } from '@/lib/market-data';
+import { enrichHoldings, buildMarketContext, fetchBenchmarks, holdingValueAud } from '@/lib/market-data';
 import { renderResearchPDF } from '@/lib/pdf/render';
 import { sendMail } from '@/lib/mailer';
 import { render } from '@react-email/components';
@@ -202,9 +202,7 @@ async function handleCron(request: NextRequest) {
       for (let i = 0; i < holdings.length; i++) {
         const h = holdings[i];
         const e = enriched[i];
-        // Use FX-converted AUD value when available; otherwise fall back to base valuation.
-        // Do NOT use live_value as fallback — it's in foreign currency and wrong to treat as AUD.
-        const val = e.live_value_aud != null ? toDecimal(e.live_value_aud) : toDecimal(h.valuation_base);
+        const val = toDecimal(holdingValueAud(h, e));
         totalValue = totalValue.plus(val);
         bySource[h.source] = (bySource[h.source] ?? toDecimal(0)).plus(val);
         byClass[h.asset_class] = (byClass[h.asset_class] ?? toDecimal(0)).plus(val);

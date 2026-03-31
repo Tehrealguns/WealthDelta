@@ -447,3 +447,22 @@ export function buildMarketContext(enriched: EnrichedHolding[]): string {
 
   return `${header}\n${lines.join('\n')}`;
 }
+
+/**
+ * Best-effort AUD value for a holding, for use in portfolio totals.
+ * Fallback order:
+ *   1. live_value_aud  — FX-converted live price (best)
+ *   2. live_value      — only when price_currency is AUD or absent (safe, no FX needed)
+ *   3. valuation_base  — stale value from PDF import (last resort)
+ */
+export function holdingValueAud(
+  h: { valuation_base: number },
+  e: EnrichedHolding,
+): number {
+  if (e.live_value_aud != null) return e.live_value_aud;
+  // live_value is safe to use when the quote currency IS AUD (no FX conversion needed)
+  if (e.live_value != null && (!e.price_currency || e.price_currency === 'AUD')) {
+    return e.live_value;
+  }
+  return h.valuation_base;
+}
