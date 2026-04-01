@@ -121,11 +121,29 @@ export async function POST(request: NextRequest) {
     text: `${parsePrompt}\n\n--- EMAIL ---\nFrom: ${fromAddress}\nSubject: ${subject}\nDate: ${new Date().toISOString()}\n\n${textBody.slice(0, 10000)}`,
   });
 
-  const message = await anthropic.messages.create({
-    model: ANTHROPIC_MODEL,
-    max_tokens: 4096,
-    messages: [{ role: 'user', content: userContent as never }],
-  });
+  let message;
+  try {
+    message = await anthropic.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: userContent as never }],
+    });
+  } catch (err) {
+    console.error('[ingest/email] Anthropic API error:', err instanceof Error ? err.message : err);
+    await supabase.from('ingested_emails').insert({
+      user_id: userId,
+      message_id: messageId,
+      from_address: fromAddress,
+      subject,
+      status: 'failed',
+      error_message: `AI extraction failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      raw_body_preview: textBody.slice(0, 500),
+    });
+    return NextResponse.json(
+      { error: 'AI extraction failed', details: err instanceof Error ? err.message : 'Unknown error' },
+      { status: 503 },
+    );
+  }
 
   const responseText = message.content
     .filter((b) => b.type === 'text')
@@ -147,7 +165,10 @@ export async function POST(request: NextRequest) {
       error_message: 'Could not parse holdings from email',
       raw_body_preview: textBody.slice(0, 500),
     });
-    return NextResponse.json({ message: 'No holdings extracted' });
+    return NextResponse.json(
+      { error: 'Extraction failed', details: 'Could not parse holdings from email' },
+      { status: 422 },
+    );
   }
 
   if (rawParsed.length === 0) {

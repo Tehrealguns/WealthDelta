@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { validateAndNormalizeHoldings } from '@/lib/holdings-validation';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 export const maxDuration = 300;
 
@@ -73,6 +74,14 @@ export async function POST(request: NextRequest) {
   const portfolioName = formData.get('portfolioName') as string | null;
   const fileDescription = formData.get('description') as string | null;
   const replaceSource = formData.get('replaceSource') as string | null;
+
+  const rateCheck = checkRateLimit(`upload:${userData.user.id}`, RATE_LIMITS.upload);
+  if (!rateCheck.allowed) {
+    return new Response(
+      sseEvent({ type: 'error', message: 'Too many upload requests. Please try again later.' }),
+      { status: 429, headers: { 'Content-Type': 'text/event-stream', 'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)) } },
+    );
+  }
 
   if (!file || file.size === 0) {
     return new Response(sseEvent({ type: 'error', message: 'No file uploaded' }), {

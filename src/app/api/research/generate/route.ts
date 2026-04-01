@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { maskPII } from '@/lib/pii-masker';
 import { formatCurrency } from '@/lib/decimal';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 import type { HoldingRow, DailySnapshotRow } from '@/lib/types';
 
 const RESEARCH_SYSTEM = `You are a senior wealth research analyst producing a comprehensive portfolio research report for an ultra-high-net-worth client. Write with the authority and depth of a Goldman Sachs or UBS research report.
@@ -56,6 +57,15 @@ export async function POST(request: NextRequest) {
   }
 
   const userId = userData.user.id;
+
+  const rateCheck = checkRateLimit(`research:${userId}`, RATE_LIMITS.ai);
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limited', details: 'Too many research requests. Please try again later.' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)) } },
+    );
+  }
+
   let body: { focusAreas?: string };
   try {
     body = (await request.json()) as typeof body;
@@ -103,17 +113,26 @@ ${body.focusAreas ? `\nCLIENT FOCUS AREAS:\n${body.focusAreas}` : ''}
     );
   }
 
-  const message = await anthropic.messages.create({
-    model: ANTHROPIC_MODEL,
-    max_tokens: 8192,
-    system: RESEARCH_SYSTEM,
-    messages: [
-      {
-        role: 'user',
-        content: `Generate a comprehensive research report for this portfolio:\n\n${maskedData}`,
-      },
-    ],
-  });
+  let message;
+  try {
+    message = await anthropic.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 8192,
+      system: RESEARCH_SYSTEM,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate a comprehensive research report for this portfolio:\n\n${maskedData}`,
+        },
+      ],
+    });
+  } catch (err) {
+    console.error('[research/generate] Anthropic API error:', err instanceof Error ? err.message : err);
+    return NextResponse.json(
+      { error: 'AI request failed', details: err instanceof Error ? err.message : 'Unknown error' },
+      { status: 503 },
+    );
+  }
 
   const reportText = message.content
     .filter((b) => b.type === 'text')

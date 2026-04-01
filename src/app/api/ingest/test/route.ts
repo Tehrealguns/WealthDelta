@@ -9,6 +9,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
+  const secret = process.env.INGEST_WEBHOOK_SECRET;
+  if (!secret) {
+    return NextResponse.json(
+      { error: 'INGEST_WEBHOOK_SECRET not configured' },
+      { status: 500 },
+    );
+  }
+
   const body = (await request.json()) as {
     to: string;
     from: string;
@@ -17,8 +25,8 @@ export async function POST(request: NextRequest) {
     messageId: string;
   };
 
-  const secret = process.env.INGEST_WEBHOOK_SECRET ?? '';
-  const origin = request.headers.get('origin') ?? request.nextUrl.origin;
+  // Use the server's own origin, never the client-supplied Origin header
+  const origin = request.nextUrl.origin;
 
   const res = await fetch(`${origin}/api/ingest/email`, {
     method: 'POST',

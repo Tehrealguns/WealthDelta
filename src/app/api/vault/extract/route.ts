@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { getBankPrompt } from '@/lib/bank-registry';
 import { validateAndNormalizeHoldings } from '@/lib/holdings-validation';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 export const maxDuration = 300;
 
@@ -19,6 +20,14 @@ export async function POST(request: NextRequest) {
 
   const formData = await request.formData();
   const file = formData.get('file') as File | null;
+
+  const rateCheck = checkRateLimit(`upload:${userData.user.id}`, RATE_LIMITS.upload);
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limited', details: 'Too many upload requests. Please try again later.' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)) } },
+    );
+  }
 
   if (!file || file.type !== 'application/pdf') {
     return NextResponse.json(
@@ -50,29 +59,38 @@ export async function POST(request: NextRequest) {
 
   const prompt = getBankPrompt(file.name);
 
-  const message = await anthropic.messages.create({
-    model: ANTHROPIC_MODEL,
-    max_tokens: 16384,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            source: {
-              type: 'base64',
-              media_type: 'application/pdf',
-              data: base64,
+  let message;
+  try {
+    message = await anthropic.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 16384,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: base64,
+              },
             },
-          },
-          {
-            type: 'text',
-            text: prompt,
-          },
-        ],
-      },
-    ],
-  });
+            {
+              type: 'text',
+              text: prompt,
+            },
+          ],
+        },
+      ],
+    });
+  } catch (err) {
+    console.error('[vault/extract] Anthropic API error:', err instanceof Error ? err.message : err);
+    return NextResponse.json(
+      { error: 'AI extraction failed', details: err instanceof Error ? err.message : 'Unknown error' },
+      { status: 503 },
+    );
+  }
 
   const responseText = message.content
     .filter((b) => b.type === 'text')

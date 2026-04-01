@@ -278,7 +278,7 @@ export async function enrichHoldings(
   const failed = [...quotes.values()].filter(q => q.price == null).length;
   console.log(`[market-data] enrichHoldings: ${gotPrices} quotes succeeded, ${failed} failed`);
 
-  // Pre-fetch FX rates for any non-AUD price currencies
+  // Pre-fetch FX rates for any non-AUD price currencies (parallelized)
   const priceCurrencies = new Set<string>();
   for (const h of holdings) {
     const resolved = h.ticker_symbol ? resolveSymbol(h.ticker_symbol, h.asset_class) : null;
@@ -290,18 +290,20 @@ export async function enrichHoldings(
   const fxRates = new Map<string, number>();
   fxRates.set('AUD', 1);
   const fxFailedCurrencies = new Set<string>();
-  for (const ccy of priceCurrencies) {
-    try {
-      const rate = await getFxRateToAUD(ccy);
-      if (rate != null) {
-        fxRates.set(ccy, rate);
-      } else {
-        fxFailedCurrencies.add(ccy);
-        console.error(`[market-data] FX rate failed for ${ccy} → AUD, holdings in this currency will use base valuation`);
-      }
-    } catch (err) {
+
+  const fxEntries = [...priceCurrencies];
+  const fxResults = await Promise.allSettled(
+    fxEntries.map((ccy) => getFxRateToAUD(ccy)),
+  );
+  for (let i = 0; i < fxEntries.length; i++) {
+    const ccy = fxEntries[i];
+    const result = fxResults[i];
+    if (result.status === 'fulfilled' && result.value != null) {
+      fxRates.set(ccy, result.value);
+    } else {
       fxFailedCurrencies.add(ccy);
-      console.error(`[market-data] FX rate error for ${ccy}:`, err instanceof Error ? err.message : err);
+      const reason = result.status === 'rejected' ? (result.reason instanceof Error ? result.reason.message : result.reason) : 'null rate';
+      console.error(`[market-data] FX rate failed for ${ccy} → AUD (${reason}), holdings in this currency will use base valuation`);
     }
   }
 

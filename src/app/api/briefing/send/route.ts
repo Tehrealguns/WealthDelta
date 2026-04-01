@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { render } from '@react-email/components';
 import { sendMail } from '@/lib/mailer';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 import BriefingEmail from '@/emails/briefing-email';
 
 export async function POST(request: NextRequest) {
@@ -10,6 +11,14 @@ export async function POST(request: NextRequest) {
 
   if (!userData?.user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const rateCheck = checkRateLimit(`email:${userData.user.id}`, RATE_LIMITS.email);
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limited', details: 'Too many email requests. Please try again later.' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)) } },
+    );
   }
 
   let body: { briefingId: string; content: string; toEmail: string };
@@ -24,6 +33,13 @@ export async function POST(request: NextRequest) {
   if (!toEmail) {
     return NextResponse.json(
       { error: 'No recipient', details: 'No email address available' },
+      { status: 400 },
+    );
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+    return NextResponse.json(
+      { error: 'Invalid email', details: 'Please provide a valid email address' },
       { status: 400 },
     );
   }

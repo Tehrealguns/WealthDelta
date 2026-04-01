@@ -251,7 +251,12 @@ async function handleCron(request: NextRequest) {
 
       // --- Build portfolio context with live market data + benchmarks ---
       const marketContext = buildMarketContext(enriched);
-      const benchmarkContext = await fetchBenchmarks(userSettings.watch_items || '');
+      let benchmarkContext = '';
+      try {
+        benchmarkContext = await fetchBenchmarks(userSettings.watch_items || '');
+      } catch (err) {
+        console.error(`[cron] Benchmark fetch failed for user ${userId}:`, err instanceof Error ? err.message : err);
+      }
 
       const holdingLines = holdings.map((h) => {
         const e = enriched.find((x) => x.asset_id === h.asset_id);
@@ -333,21 +338,27 @@ ${benchmarkContext}
         (pdfDaysList.length === 0 || pdfDaysList.includes(currentDay));
 
       if (shouldAttachPdf) {
-        const researchMsg = await anthropic.messages.create({
-          model: ANTHROPIC_MODEL,
-          max_tokens: 8192,
-          system: RESEARCH_SYSTEM,
-          messages: [
-            { role: 'user', content: `Generate a comprehensive research report:\n\n${maskedContext}` },
-          ],
-        });
+        try {
+          const researchMsg = await anthropic.messages.create({
+            model: ANTHROPIC_MODEL,
+            max_tokens: 8192,
+            system: RESEARCH_SYSTEM,
+            messages: [
+              { role: 'user', content: `Generate a comprehensive research report:\n\n${maskedContext}` },
+            ],
+          });
 
-        const reportText = researchMsg.content
-          .filter((b) => b.type === 'text')
-          .map((b) => ('text' in b ? b.text : ''))
-          .join('');
+          const reportText = researchMsg.content
+            .filter((b) => b.type === 'text')
+            .map((b) => ('text' in b ? b.text : ''))
+            .join('');
 
-        pdfBuffer = await renderResearchPDF(reportText, today);
+          pdfBuffer = await renderResearchPDF(reportText, today);
+        } catch (err) {
+          // PDF generation failed — send briefing email without attachment rather than failing entirely
+          console.error(`[cron] PDF generation failed for user ${userId}:`, err instanceof Error ? err.message : err);
+          pdfBuffer = null;
+        }
       }
 
       // --- Send email via SMTP ---

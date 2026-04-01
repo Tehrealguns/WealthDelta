@@ -4,6 +4,7 @@ import { getAnthropicClient, ANTHROPIC_MODEL } from '@/lib/anthropic';
 import { maskPII } from '@/lib/pii-masker';
 import { toDecimal, formatCurrency } from '@/lib/decimal';
 import { enrichHoldings, buildMarketContext, fetchBenchmarks, holdingValueAud } from '@/lib/market-data';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 import type { HoldingRow, SnapshotBreakdown, Source, AssetClass } from '@/lib/types';
 
 const BRIEFING_SYSTEM = `You are a private wealth advisor writing a concise daily briefing for an ultra-high-net-worth individual. Write in a professional but conversational tone.
@@ -65,6 +66,15 @@ export async function POST(request: NextRequest) {
   }
 
   const userId = userData.user.id;
+
+  const rateCheck = checkRateLimit(`briefing:${userId}`, RATE_LIMITS.ai);
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limited', details: 'Too many briefing requests. Please try again later.' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)) } },
+    );
+  }
+
   let body: { customInstructions?: string };
   try {
     body = (await request.json()) as typeof body;
@@ -210,17 +220,26 @@ ${prevSnapshot ? `\nPREVIOUS SNAPSHOT (${prevSnapshot.snapshot_date}):\nTotal (A
     ? `${BRIEFING_SYSTEM}\n\nADDITIONAL INSTRUCTIONS FROM USER:\n${customInstructions}`
     : BRIEFING_SYSTEM;
 
-  const message = await anthropic.messages.create({
-    model: ANTHROPIC_MODEL,
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages: [
-      {
-        role: 'user',
-        content: `Generate today's wealth briefing based on this portfolio data:\n\n${maskedContext}`,
-      },
-    ],
-  });
+  let message;
+  try {
+    message = await anthropic.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate today's wealth briefing based on this portfolio data:\n\n${maskedContext}`,
+        },
+      ],
+    });
+  } catch (err) {
+    console.error('[briefing/generate] Anthropic API error:', err instanceof Error ? err.message : err);
+    return NextResponse.json(
+      { error: 'AI request failed', details: err instanceof Error ? err.message : 'Unknown error' },
+      { status: 503 },
+    );
+  }
 
   const summaryText = message.content
     .filter((b) => b.type === 'text')
