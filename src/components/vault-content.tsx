@@ -17,6 +17,10 @@ import {
   Trash2,
   ChevronDown,
   PlusCircle,
+  Activity,
+  AlertTriangle,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { HoldingRow } from '@/lib/types';
@@ -38,6 +42,29 @@ interface VaultFile {
 
 type UploadMode = 'new' | 'add' | 'replace';
 
+interface RecalcItem {
+  asset_name: string;
+  source: string;
+  ticker: string | null;
+  base_value: number;
+  live_value_aud: number | null;
+  effective_value: number;
+  price_currency: string | null;
+  fx_rate: number | null;
+  fx_failed: boolean;
+  stale: boolean;
+  day_change_pct: number | null;
+}
+
+interface RecalcResult {
+  total_value: number;
+  holdings_count: number;
+  stale_count: number;
+  fx_fail_count: number;
+  warnings: string[];
+  items: RecalcItem[];
+}
+
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -54,6 +81,8 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [deletingSource, setDeletingSource] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
+  const [recalcResult, setRecalcResult] = useState<RecalcResult | null>(null);
 
   const existingSources = [...new Set(staticHoldings.map((h) => h.source))].sort();
 
@@ -217,6 +246,26 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete');
     } finally {
       setDeleteLoading(false);
+    }
+  }
+
+  async function recalculate() {
+    setRecalculating(true);
+    setRecalcResult(null);
+    try {
+      const res = await fetch('/api/holdings/recalculate', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Recalculation failed');
+      setRecalcResult(data as RecalcResult);
+      if (data.warnings?.length > 0) {
+        toast.warning(data.warnings.join('. '));
+      } else {
+        toast.success(`Portfolio: ${formatCurrency(data.total_value)} across ${data.holdings_count} holdings`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Recalculation failed');
+    } finally {
+      setRecalculating(false);
     }
   }
 
@@ -455,6 +504,159 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Recalculate section */}
+      {holdingsBySource.length > 0 && (
+        <Card className="border-white/[0.06] bg-[#0a0a0a]">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-xs font-medium text-white/30 tracking-widest uppercase">
+              Portfolio Health Check
+            </CardTitle>
+            <Button
+              onClick={recalculate}
+              disabled={recalculating}
+              size="sm"
+              className="bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white/80 border border-white/[0.08] h-8 text-xs"
+            >
+              {recalculating ? (
+                <><Loader2 className="size-3 mr-1.5 animate-spin" />Recalculating...</>
+              ) : (
+                <><Activity className="size-3 mr-1.5" />Recalculate Live Values</>
+              )}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {!recalcResult && !recalculating && (
+              <p className="text-xs text-white/25">
+                Re-runs the enrichment pipeline — fetches live prices, converts currencies, and shows the result. Use this to verify data fixes.
+              </p>
+            )}
+
+            {recalcResult && (
+              <div className="space-y-4">
+                {/* Summary */}
+                <div className="flex items-center gap-6">
+                  <div>
+                    <p className="text-xs text-white/30">Live Portfolio Total</p>
+                    <p className="text-xl font-semibold tabular-nums text-white/90">
+                      {formatCurrency(recalcResult.total_value)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/30">Holdings</p>
+                    <p className="text-sm font-medium tabular-nums text-white/60">
+                      {recalcResult.holdings_count}
+                    </p>
+                  </div>
+                  {recalcResult.stale_count > 0 && (
+                    <div>
+                      <p className="text-xs text-white/30">No Live Price</p>
+                      <p className="text-sm font-medium tabular-nums text-amber-400/80">
+                        {recalcResult.stale_count}
+                      </p>
+                    </div>
+                  )}
+                  {recalcResult.fx_fail_count > 0 && (
+                    <div>
+                      <p className="text-xs text-white/30">FX Failed</p>
+                      <p className="text-sm font-medium tabular-nums text-red-400/80">
+                        {recalcResult.fx_fail_count}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Warnings */}
+                {recalcResult.warnings.length > 0 && (
+                  <div className="rounded-lg bg-amber-500/5 border border-amber-500/15 p-3 space-y-1">
+                    {recalcResult.warnings.map((w, i) => (
+                      <p key={i} className="text-xs text-amber-400/70 flex items-start gap-1.5">
+                        <AlertTriangle className="size-3 mt-0.5 shrink-0" />
+                        {w}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Per-holding table */}
+                <div className="max-h-[28rem] overflow-y-auto rounded-lg border border-white/[0.06]">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-[#0a0a0a] border-b border-white/[0.06]">
+                      <tr className="text-white/30">
+                        <th className="text-left px-3 py-2 font-medium">Asset</th>
+                        <th className="text-right px-3 py-2 font-medium">Base Value</th>
+                        <th className="text-right px-3 py-2 font-medium">Live (AUD)</th>
+                        <th className="text-right px-3 py-2 font-medium">FX</th>
+                        <th className="text-right px-3 py-2 font-medium">Day</th>
+                        <th className="text-center px-3 py-2 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/[0.04]">
+                      {recalcResult.items.map((item, i) => (
+                        <tr
+                          key={i}
+                          className={
+                            item.fx_failed
+                              ? 'bg-red-500/[0.03]'
+                              : item.stale
+                                ? 'bg-amber-500/[0.02]'
+                                : ''
+                          }
+                        >
+                          <td className="px-3 py-2">
+                            <p className="text-white/60 truncate max-w-[12rem]">{item.asset_name}</p>
+                            <p className="text-white/20 text-[10px]">{item.ticker ?? '—'} · {item.source}</p>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-white/35">
+                            {formatCurrency(item.base_value)}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-white/60 font-medium">
+                            {formatCurrency(item.effective_value)}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-white/30">
+                            {item.price_currency && item.price_currency !== 'AUD' ? (
+                              item.fx_rate != null ? (
+                                <span>{item.price_currency} {item.fx_rate.toFixed(4)}</span>
+                              ) : (
+                                <span className="text-red-400/60">no rate</span>
+                              )
+                            ) : (
+                              <span className="text-white/15">AUD</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            {item.day_change_pct != null ? (
+                              <span className={`inline-flex items-center gap-0.5 ${item.day_change_pct >= 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
+                                {item.day_change_pct >= 0 ? <TrendingUp className="size-2.5" /> : <TrendingDown className="size-2.5" />}
+                                {item.day_change_pct >= 0 ? '+' : ''}{item.day_change_pct.toFixed(2)}%
+                              </span>
+                            ) : (
+                              <span className="text-white/15">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {item.fx_failed ? (
+                              <span className="inline-flex items-center gap-1 text-red-400/70 text-[10px]">
+                                <AlertCircle className="size-2.5" />FX fail
+                              </span>
+                            ) : item.stale ? (
+                              <span className="inline-flex items-center gap-1 text-amber-400/70 text-[10px]">
+                                <AlertTriangle className="size-2.5" />stale
+                              </span>
+                            ) : (
+                              <span className="text-emerald-400/60 text-[10px]">live</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Existing holdings by source */}
       {holdingsBySource.length > 0 && (
