@@ -32,13 +32,18 @@ export async function POST() {
     asset_name: string;
     source: string;
     ticker: string | null;
+    quantity: number | null;
+    currency: string | null;
+    asset_class: string;
     base_value: number;
+    live_price: number | null;
     live_value_aud: number | null;
     effective_value: number;
     price_currency: string | null;
     fx_rate: number | null;
     fx_failed: boolean;
     stale: boolean;
+    stale_reason: string | null;
     day_change_pct: number | null;
   }[] = [];
 
@@ -52,13 +57,24 @@ export async function POST() {
       asset_name: h.asset_name,
       source: h.source,
       ticker: h.ticker_symbol,
+      quantity: h.quantity,
+      currency: h.currency,
+      asset_class: h.asset_class,
       base_value: h.valuation_base,
+      live_price: e.live_price,
       live_value_aud: e.live_value_aud,
       effective_value: effective,
       price_currency: e.price_currency,
       fx_rate: e.fx_rate_to_aud,
       fx_failed: e.fx_failed,
       stale: e.stale,
+      stale_reason: e.stale
+        ? !h.ticker_symbol
+          ? 'no ticker'
+          : !h.quantity
+            ? 'no quantity'
+            : 'no quote from Yahoo'
+        : null,
       day_change_pct: e.day_change_pct,
     });
   }

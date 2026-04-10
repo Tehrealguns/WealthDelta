@@ -46,13 +46,18 @@ interface RecalcItem {
   asset_name: string;
   source: string;
   ticker: string | null;
+  quantity: number | null;
+  currency: string | null;
+  asset_class: string;
   base_value: number;
+  live_price: number | null;
   live_value_aud: number | null;
   effective_value: number;
   price_currency: string | null;
   fx_rate: number | null;
   fx_failed: boolean;
   stale: boolean;
+  stale_reason: string | null;
   day_change_pct: number | null;
 }
 
@@ -578,6 +583,37 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
                   </div>
                 )}
 
+                {/* Stale holdings summary */}
+                {recalcResult.items.some((i) => i.stale || i.fx_failed) && (
+                  <div className="rounded-lg bg-white/[0.02] border border-white/[0.06] p-3 space-y-1.5">
+                    <p className="text-[10px] font-medium text-white/30 tracking-widest uppercase">Holdings without live prices</p>
+                    {recalcResult.items
+                      .filter((i) => i.stale || i.fx_failed)
+                      .map((i, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-xs">
+                          <span className="text-white/50 truncate max-w-[14rem]">
+                            {i.asset_name}
+                            <span className="text-white/20 ml-1.5">{i.ticker ?? 'no ticker'}</span>
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <span className="tabular-nums text-white/30">{formatCurrency(i.base_value)}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              i.stale_reason === 'no ticker'
+                                ? 'bg-white/[0.04] text-white/30'
+                                : i.stale_reason === 'no quantity'
+                                  ? 'bg-blue-500/10 text-blue-400/70'
+                                  : i.fx_failed
+                                    ? 'bg-red-500/10 text-red-400/70'
+                                    : 'bg-amber-500/10 text-amber-400/70'
+                            }`}>
+                              {i.fx_failed ? 'FX failed' : i.stale_reason ?? 'stale'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+
                 {/* Per-holding table */}
                 <div className="max-h-[28rem] overflow-y-auto rounded-lg border border-white/[0.06]">
                   <table className="w-full text-xs">
@@ -640,8 +676,8 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
                                 <AlertCircle className="size-2.5" />FX fail
                               </span>
                             ) : item.stale ? (
-                              <span className="inline-flex items-center gap-1 text-amber-400/70 text-[10px]">
-                                <AlertTriangle className="size-2.5" />stale
+                              <span className="inline-flex items-center gap-1 text-amber-400/70 text-[10px]" title={item.stale_reason ?? 'stale'}>
+                                <AlertTriangle className="size-2.5" />{item.stale_reason ?? 'stale'}
                               </span>
                             ) : (
                               <span className="text-emerald-400/60 text-[10px]">live</span>
