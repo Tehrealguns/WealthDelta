@@ -28,6 +28,7 @@ export async function POST() {
   const enriched = await enrichHoldings(holdings);
 
   let totalValue = toDecimal(0);
+  let baseTotal = toDecimal(0);
   const items: {
     asset_name: string;
     source: string;
@@ -52,6 +53,7 @@ export async function POST() {
     const e = enriched[i];
     const effective = holdingValueAud(h, e);
     totalValue = totalValue.plus(toDecimal(effective));
+    baseTotal = baseTotal.plus(toDecimal(h.valuation_base));
 
     items.push({
       asset_name: h.asset_name,
@@ -90,6 +92,7 @@ export async function POST() {
 
   return NextResponse.json({
     total_value: totalValue.toNumber(),
+    base_total: baseTotal.toNumber(),
     holdings_count: holdings.length,
     stale_count: staleCount,
     fx_fail_count: fxFailCount,

@@ -63,6 +63,7 @@ interface RecalcItem {
 
 interface RecalcResult {
   total_value: number;
+  base_total: number;
   holdings_count: number;
   stale_count: number;
   fx_fail_count: number;
@@ -540,12 +541,27 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
             {recalcResult && (
               <div className="space-y-4">
                 {/* Summary */}
-                <div className="flex items-center gap-6">
+                <div className="flex items-center gap-6 flex-wrap">
                   <div>
-                    <p className="text-xs text-white/30">Live Portfolio Total</p>
+                    <p className="text-xs text-white/30">Statement Total</p>
                     <p className="text-xl font-semibold tabular-nums text-white/90">
+                      {formatCurrency(recalcResult.base_total)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/30">Live Total</p>
+                    <p className="text-lg tabular-nums text-white/60">
                       {formatCurrency(recalcResult.total_value)}
                     </p>
+                    {(() => {
+                      const diff = recalcResult.total_value - recalcResult.base_total;
+                      const pct = recalcResult.base_total !== 0 ? (diff / recalcResult.base_total) * 100 : 0;
+                      return (
+                        <p className={`text-xs tabular-nums ${diff >= 0 ? 'text-emerald-400/60' : 'text-red-400/60'}`}>
+                          {diff >= 0 ? '+' : ''}{formatCurrency(diff)} ({diff >= 0 ? '+' : ''}{pct.toFixed(2)}%)
+                        </p>
+                      );
+                    })()}
                   </div>
                   <div>
                     <p className="text-xs text-white/30">Holdings</p>
