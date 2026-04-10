@@ -125,8 +125,9 @@ export async function getQuote(symbol: string): Promise<QuoteResult> {
     const prevClose = meta?.chartPreviousClose ?? (closes && closes.length >= 2 ? closes[closes.length - 2] : null);
 
     let quoteCurrency: string | null = meta?.currency ?? null;
-    let quotePrice = currentPrice;
-    let quotePrevClose = prevClose;
+    // Treat zero prices as missing data (delisted/dead tickers return 0.0)
+    let quotePrice = currentPrice != null && currentPrice !== 0 ? currentPrice : null;
+    let quotePrevClose = prevClose != null && prevClose !== 0 ? prevClose : null;
 
     // Normalize sub-unit currencies (GBp → GBP, ZAc → ZAR, ILA → ILS, etc.)
     // Yahoo Finance returns some exchange prices in sub-units; divide to get base currency.
