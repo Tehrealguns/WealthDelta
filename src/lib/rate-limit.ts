@@ -65,4 +65,6 @@ export const RATE_LIMITS = {
   upload: { maxRequests: 10, windowMs: 60 * 60 * 1000 } as RateLimitConfig,
   /** Email sending — 10 per hour */
   email: { maxRequests: 10, windowMs: 60 * 60 * 1000 } as RateLimitConfig,
+  /** Re-extraction (expensive, processes all files) — 2 per hour */
+  reextract: { maxRequests: 2, windowMs: 60 * 60 * 1000 } as RateLimitConfig,
 };

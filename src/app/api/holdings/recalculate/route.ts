@@ -90,6 +90,18 @@ export async function POST() {
   // Sort by effective value descending
   items.sort((a, b) => b.effective_value - a.effective_value);
 
+  // Per-source breakdown
+  const bySource: Record<string, { base_total: number; live_total: number; count: number; stale: number }> = {};
+  for (const item of items) {
+    if (!bySource[item.source]) {
+      bySource[item.source] = { base_total: 0, live_total: 0, count: 0, stale: 0 };
+    }
+    bySource[item.source].base_total += item.base_value;
+    bySource[item.source].live_total += item.effective_value;
+    bySource[item.source].count += 1;
+    if (item.stale || item.fx_failed) bySource[item.source].stale += 1;
+  }
+
   return NextResponse.json({
     total_value: totalValue.toNumber(),
     base_total: baseTotal.toNumber(),
@@ -97,6 +109,7 @@ export async function POST() {
     stale_count: staleCount,
     fx_fail_count: fxFailCount,
     warnings,
+    by_source: bySource,
     items,
   });
 }

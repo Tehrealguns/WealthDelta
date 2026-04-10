@@ -48,3 +48,17 @@ export interface SnapshotBreakdown {
   by_source: Record<Source, number>;
   by_class: Record<AssetClass, number>;
 }
+
+export interface VaultFileRow {
+  id: string;
+  user_id: string;
+  source: string;
+  file_name: string;
+  file_path: string;
+  file_size: number | null;
+  mime_type: string | null;
+  description: string | null;
+  holdings_extracted: number;
+  last_extracted_at: string | null;
+  created_at: string;
+}

@@ -23,11 +23,12 @@ import {
   TrendingDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { HoldingRow } from '@/lib/types';
+import type { HoldingRow, VaultFileRow } from '@/lib/types';
 import { formatCurrency } from '@/lib/decimal';
 
 interface VaultContentProps {
   staticHoldings: HoldingRow[];
+  vaultFiles: VaultFileRow[];
 }
 
 interface VaultFile {
@@ -61,6 +62,13 @@ interface RecalcItem {
   day_change_pct: number | null;
 }
 
+interface RecalcSourceBreakdown {
+  base_total: number;
+  live_total: number;
+  count: number;
+  stale: number;
+}
+
 interface RecalcResult {
   total_value: number;
   base_total: number;
@@ -68,6 +76,7 @@ interface RecalcResult {
   stale_count: number;
   fx_fail_count: number;
   warnings: string[];
+  by_source: Record<string, RecalcSourceBreakdown>;
   items: RecalcItem[];
 }
 
@@ -77,7 +86,15 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function VaultContent({ staticHoldings }: VaultContentProps) {
+interface ReextractProgress {
+  current: number;
+  total: number;
+  currentFile: string;
+  currentSource: string;
+  results: Array<{ file: string; source: string; status: 'done' | 'error'; count?: number; message?: string }>;
+}
+
+export function VaultContent({ staticHoldings, vaultFiles }: VaultContentProps) {
   const router = useRouter();
   const [files, setFiles] = useState<VaultFile[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -89,6 +106,8 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [recalcResult, setRecalcResult] = useState<RecalcResult | null>(null);
+  const [reextracting, setReextracting] = useState(false);
+  const [reextractProgress, setReextractProgress] = useState<ReextractProgress | null>(null);
 
   const existingSources = [...new Set(staticHoldings.map((h) => h.source))].sort();
 
@@ -272,6 +291,64 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
       toast.error(err instanceof Error ? err.message : 'Recalculation failed');
     } finally {
       setRecalculating(false);
+    }
+  }
+
+  async function reextractAll() {
+    setReextracting(true);
+    setReextractProgress(null);
+    try {
+      const res = await fetch('/api/vault/reextract', { method: 'POST' });
+      if (!res.body) throw new Error('No response stream');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6)) as Record<string, unknown>;
+
+            if (event.type === 'progress') {
+              setReextractProgress((prev) => {
+                const results = prev?.results ?? [];
+                if (event.status === 'done' || event.status === 'error') {
+                  results.push({
+                    file: event.file as string,
+                    source: event.source as string,
+                    status: event.status as 'done' | 'error',
+                    count: event.count as number | undefined,
+                    message: event.message as string | undefined,
+                  });
+                }
+                return {
+                  current: (event.index as number) + 1,
+                  total: event.total as number,
+                  currentFile: event.file as string,
+                  currentSource: event.source as string,
+                  results,
+                };
+              });
+            } else if (event.type === 'complete') {
+              toast.success(`Re-extracted ${event.total_holdings} holdings from ${event.files_processed}/${event.total_files} files`);
+              router.refresh();
+            }
+          } catch { /* skip malformed */ }
+        }
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Re-extraction failed');
+    } finally {
+      setReextracting(false);
     }
   }
 
@@ -518,23 +595,75 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
             <CardTitle className="text-xs font-medium text-white/30 tracking-widest uppercase">
               Portfolio Health Check
             </CardTitle>
-            <Button
-              onClick={recalculate}
-              disabled={recalculating}
-              size="sm"
-              className="bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white/80 border border-white/[0.08] h-8 text-xs"
-            >
-              {recalculating ? (
-                <><Loader2 className="size-3 mr-1.5 animate-spin" />Recalculating...</>
-              ) : (
-                <><Activity className="size-3 mr-1.5" />Recalculate Live Values</>
+            <div className="flex gap-2">
+              <Button
+                onClick={recalculate}
+                disabled={recalculating || reextracting}
+                size="sm"
+                className="bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white/80 border border-white/[0.08] h-8 text-xs"
+              >
+                {recalculating ? (
+                  <><Loader2 className="size-3 mr-1.5 animate-spin" />Recalculating...</>
+                ) : (
+                  <><Activity className="size-3 mr-1.5" />Recalculate</>
+                )}
+              </Button>
+              {vaultFiles.length > 0 && (
+                <Button
+                  onClick={reextractAll}
+                  disabled={reextracting || recalculating}
+                  size="sm"
+                  className="bg-amber-500/10 text-amber-400/80 hover:bg-amber-500/20 hover:text-amber-400 border border-amber-500/20 h-8 text-xs"
+                >
+                  {reextracting ? (
+                    <><Loader2 className="size-3 mr-1.5 animate-spin" />Re-extracting...</>
+                  ) : (
+                    <><RefreshCw className="size-3 mr-1.5" />Re-extract All ({vaultFiles.length} files)</>
+                  )}
+                </Button>
               )}
-            </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            {!recalcResult && !recalculating && (
+            {/* Re-extract progress */}
+            {reextractProgress && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-white/50">
+                    {reextracting
+                      ? `Processing ${reextractProgress.currentFile} (${reextractProgress.currentSource})...`
+                      : 'Re-extraction complete'}
+                  </span>
+                  <span className="text-white/30 tabular-nums">{reextractProgress.current}/{reextractProgress.total}</span>
+                </div>
+                <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                  <div
+                    className="h-full bg-amber-400/60 transition-all duration-500 rounded-full"
+                    style={{ width: `${(reextractProgress.current / reextractProgress.total) * 100}%` }}
+                  />
+                </div>
+                {reextractProgress.results.length > 0 && (
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {reextractProgress.results.map((r, i) => (
+                      <p key={i} className="text-[10px] flex items-center gap-1.5">
+                        {r.status === 'done' ? (
+                          <CheckCircle2 className="size-2.5 text-emerald-400/70 shrink-0" />
+                        ) : (
+                          <AlertCircle className="size-2.5 text-red-400/70 shrink-0" />
+                        )}
+                        <span className="text-white/40 truncate">{r.source} — {r.file}</span>
+                        {r.status === 'done' && <span className="text-emerald-400/60 shrink-0">{r.count} holdings</span>}
+                        {r.status === 'error' && <span className="text-red-400/60 shrink-0">{r.message}</span>}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!recalcResult && !recalculating && !reextractProgress && (
               <p className="text-xs text-white/25">
-                Re-runs the enrichment pipeline — fetches live prices, converts currencies, and shows the result. Use this to verify data fixes.
+                <strong>Recalculate</strong> re-runs live prices and FX conversion. <strong>Re-extract All</strong> re-processes stored files through Claude.
               </p>
             )}
 
@@ -586,6 +715,53 @@ export function VaultContent({ staticHoldings }: VaultContentProps) {
                     </div>
                   )}
                 </div>
+
+                {/* Per-source breakdown */}
+                {Object.keys(recalcResult.by_source).length > 0 && (
+                  <div className="rounded-lg border border-white/[0.06] overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-white/[0.03] border-b border-white/[0.06]">
+                        <tr className="text-white/30">
+                          <th className="text-left px-3 py-2 font-medium">Source</th>
+                          <th className="text-right px-3 py-2 font-medium">Statement</th>
+                          <th className="text-right px-3 py-2 font-medium">Live</th>
+                          <th className="text-right px-3 py-2 font-medium">Delta</th>
+                          <th className="text-center px-3 py-2 font-medium">Count</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.04]">
+                        {Object.entries(recalcResult.by_source)
+                          .sort(([, a], [, b]) => b.live_total - a.live_total)
+                          .map(([source, data]) => {
+                            const delta = data.live_total - data.base_total;
+                            const pct = data.base_total !== 0 ? (delta / data.base_total) * 100 : 0;
+                            return (
+                              <tr key={source}>
+                                <td className="px-3 py-2">
+                                  <p className="text-white/60 font-medium">{source}</p>
+                                  {data.stale > 0 && (
+                                    <p className="text-amber-400/50 text-[10px]">{data.stale} stale</p>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums text-white/40">
+                                  {formatCurrency(data.base_total)}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums text-white/60 font-medium">
+                                  {formatCurrency(data.live_total)}
+                                </td>
+                                <td className={`px-3 py-2 text-right tabular-nums ${delta >= 0 ? 'text-emerald-400/60' : 'text-red-400/60'}`}>
+                                  {delta >= 0 ? '+' : ''}{pct.toFixed(1)}%
+                                </td>
+                                <td className="px-3 py-2 text-center tabular-nums text-white/30">
+                                  {data.count}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
                 {/* Warnings */}
                 {recalcResult.warnings.length > 0 && (
